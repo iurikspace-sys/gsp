@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Seq Trainer — test</title>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 0; background: #fafafa; color: #222; }
+  header { padding: 12px 24px; background: #fff; border-bottom: 1px solid #ddd; }
+  #crumbs { font-size: 14px; color: #666; margin-bottom: 8px; }
+  #crumbs b { color: #222; }
+  button { font-size: 15px; padding: 6px 16px; margin-right: 6px; cursor: pointer; }
+  button:disabled { cursor: default; opacity: .5; }
+  #status { margin-left: 12px; font-size: 13px; color: #666; }
+  #at { padding: 16px 24px; max-width: 1200px; }
+</style>
+</head>
+<body>
+<header>
+  <div id="crumbs">…</div>
+  <button id="play" disabled>▶ Play</button>
+  <button id="stop" disabled>■ Stop</button>
+  <span id="status">загрузка…</span>
+</header>
+<pre id="dbg" style="margin:0;padding:8px 24px;font-size:12px;color:#888;background:#f3f3f3"></pre>
+<div id="at"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@coderline/alphatab@1.6.3/dist/alphaTab.min.js"></script>
+<script>
+// Какое упражнение открыть: index.html#alternate-picking/chapter-01/exercise-01
+const DEFAULT_ID = "alternate-picking/chapter-01/exercise-01";
+const id = location.hash.slice(1) || DEFAULT_ID;
+
+const $ = s => document.querySelector(s);
+const status = t => $("#status").textContent = t;
+
+const CDN = "https://cdn.jsdelivr.net/npm/@coderline/alphatab@1.6.3/dist/";
+const api = new alphaTab.AlphaTabApi($("#at"), {
+  core: { fontDirectory: CDN + "font/" },
+  display: { staveProfile: "ScoreTab" },   // ноты + табулатура
+  player: {
+    enablePlayer: true,
+    soundFont: CDN + "soundfont/sonivox.sf2",
+    enableCursor: true,
+    enableAnimatedBeatCursor: true
+  }
+});
+
+api.soundFontLoad.on(e => status("звуки: " + Math.round(e.loaded / e.total * 100) + "%"));
+api.playerReady.on(() => { $("#play").disabled = false; $("#stop").disabled = false; status("готово"); });
+api.renderFinished.on(() => status("нотация отрисована"));
+api.error.on(e => { console.error(e); status("ошибка: " + (e.message || e)); });
+api.playerStateChanged.on(e => { $("#play").textContent = e.state === 1 ? "❚❚ Pause" : "▶ Play"; });
+
+$("#play").onclick = () => api.playPause();
+$("#stop").onclick = () => api.stop();
+
+fetch("data/" + id + ".json?t=" + Date.now(), { cache: "no-store" })
+  .then(r => { if (!r.ok) throw new Error("файл не найден: data/" + id + ".json"); return r.json(); })
+  .then(d => {
+    $("#crumbs").innerHTML = d.breadcrumbs.map((c, i, a) => i === a.length - 1 ? "<b>" + c + "</b>" : c).join(" / ");
+    $("#dbg").textContent = d.alphatex.split("\n").slice(0, 6).join("\n");
+    api.tex(d.alphatex);
+  })
+  .catch(e => { console.error(e); status(String(e.message || e)); });
+</script>
+</body>
+</html>

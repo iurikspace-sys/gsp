@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Seq Trainer v6</title>
 <style>
-  :root { --ui: 0.5; }   /* масштаб интерфейса (кнопки, гриф, список); 1 = крупно, 0.5 = вдвое меньше */
+  :root { --ui: 0.8; }   /* масштаб интерфейса (кнопки, гриф, список); 1 = крупно, 0.5 = вдвое меньше */
   html, body { height: 100%; }
   body { font-family: system-ui, sans-serif; margin: 0; background: #fafafa; color: #222; display: flex; flex-direction: column; overflow: hidden; }
   header { zoom: var(--ui); flex: none; position: relative; z-index: 2000; padding: 10px 24px; background: #fff; border-bottom: 1px solid #ddd; }
@@ -50,7 +50,7 @@ const id = location.hash.slice(1) || DEFAULT_ID;
 
 const $ = s => document.querySelector(s);
 const status = t => $("#status").textContent = t;
-const NOTATION_SCALE = 0.7;   // масштаб нот и табов; 1 = крупно
+const NOTATION_SCALE = 0.65;   // масштаб нот и табов; 1 = крупно
 const CDN = "https://cdn.jsdelivr.net/npm/@coderline/alphatab@1.6.3/dist/";
 
 const api = new alphaTab.AlphaTabApi($("#at"), {

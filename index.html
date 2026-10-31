@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Seq Trainer v6</title>
+<style>
+  :root { --ui: 0.5; }   /* масштаб интерфейса (кнопки, гриф, список); 1 = крупно, 0.5 = вдвое меньше */
+  html, body { height: 100%; }
+  body { font-family: system-ui, sans-serif; margin: 0; background: #fafafa; color: #222; display: flex; flex-direction: column; overflow: hidden; }
+  header { zoom: var(--ui); flex: none; position: relative; z-index: 2000; padding: 10px 24px; background: #fff; border-bottom: 1px solid #ddd; }
+  #crumbs { font-size: 14px; color: #666; margin-bottom: 6px; }
+  #crumbs b { color: #222; }
+  button { font-size: 15px; padding: 6px 16px; margin-right: 6px; cursor: pointer; }
+  button:disabled { cursor: default; opacity: .5; }
+  label { font-size: 14px; margin-left: 8px; }
+  #status { margin-left: 12px; font-size: 13px; color: #666; }
+  #layout { flex: 1; min-height: 0; display: grid; grid-template-columns: calc(250px * var(--ui)) 1fr; grid-template-rows: minmax(0, 1fr); gap: 16px; padding: 0 24px; }
+  #list { zoom: var(--ui); overflow-y: auto; padding: 16px 0; }
+  #list button { display: block; width: 100%; margin: 0 0 4px; text-align: left; font-size: 14px; padding: 8px 10px; background: #fff; border: 1px solid #ddd; border-radius: 6px; }
+  #list button.active { background: #e8f0fe; border-color: #7aa7f7; font-weight: 600; }
+  #atwrap { position: relative; overflow-y: auto; padding: 16px 0; isolation: isolate; contain: paint; }
+  /* курсор alphaTab: зелёный */
+  .at-cursor-bar { background: rgba(46, 160, 67, .10); }
+  .at-cursor-beat { background: #2ea043; width: 3px; }
+  .at-selection div { background: rgba(46, 160, 67, .08); }
+  .at-highlight * { fill: #2ea043; stroke: #2ea043; }
+  #fretboard { margin-top: 8px; }
+</style>
+</head>
+<body>
+<header>
+  <div id="crumbs">…</div>
+  <button id="play" disabled>▶ Play</button>
+  <button id="stop" disabled>■ Stop</button>
+  <label><input type="checkbox" id="loop" checked> Повтор</label>
+  <span id="status">загрузка…</span>
+  <div id="fretboard"></div>
+</header>
+<div id="layout">
+  <nav id="list"></nav>
+  <div id="atwrap"><div id="at"></div></div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@coderline/alphatab@1.6.3/dist/alphaTab.min.js"></script>
+<script>
+// Какую главу открыть: index.html#pentatonic/chapter-01  →  data/pentatonic/chapter-01.json
+const DEFAULT_ID = "pentatonic/chapter-01";
+const id = location.hash.slice(1) || DEFAULT_ID;
+
+const $ = s => document.querySelector(s);
+const status = t => $("#status").textContent = t;
+const NOTATION_SCALE = 0.7;   // масштаб нот и табов; 1 = крупно
+const CDN = "https://cdn.jsdelivr.net/npm/@coderline/alphatab@1.6.3/dist/";
+
+const api = new alphaTab.AlphaTabApi($("#at"), {
+  core: { fontDirectory: CDN + "font/" },
+  display: { staveProfile: "ScoreTab", scale: NOTATION_SCALE },
+  player: {
+    enablePlayer: true,
+    soundFont: CDN + "soundfont/sonivox.sf2",
+    scrollElement: $("#atwrap"),
+    enableCursor: true,
+    enableAnimatedBeatCursor: true
+  }
+});
+api.isLooping = true;
+
+// ---------- гриф: 24 лада, подсветка играющей ноты ----------
+const FRETS = 24, FW = 40, SP = 22, X0 = 36, Y0 = 16;
+const NS = "http://www.w3.org/2000/svg";
+function svgEl(name, attrs, parent) {
+  const e = document.createElementNS(NS, name);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  if (parent) parent.appendChild(e);
+  return e;
+}
+const noteLayer = (function buildFretboard() {
+  const top = Y0 - 8, bottom = Y0 + 5 * SP + 8, w = X0 + FRETS * FW + 10, h = bottom + 28;
+  const svg = svgEl("svg", { viewBox: "0 0 " + w + " " + h, width: "100%" }, $("#fretboard"));
+  svg.style.maxWidth = w + "px";
+  svg.style.display = "block";
+  svgEl("rect", { x: X0, y: top, width: FRETS * FW, height: bottom - top, fill: "#ead9b8" }, svg);
+  for (let k = 0; k <= FRETS; k++) {
+    const x = X0 + k * FW;
+    svgEl("line", { x1: x, y1: top, x2: x, y2: bottom, stroke: k === 0 ? "#444" : "#999", "stroke-width": k === 0 ? 4 : 1.5 }, svg);
+  }
+  [3, 5, 7, 9, 15, 17, 19, 21].forEach(f => svgEl("circle", { cx: X0 + (f - 0.5) * FW, cy: Y0 + 2.5 * SP, r: 5, fill: "#cdbb92" }, svg));
+  [12, 24].forEach(f => [1.5, 3.5].forEach(m => svgEl("circle", { cx: X0 + (f - 0.5) * FW, cy: Y0 + m * SP, r: 5, fill: "#cdbb92" }, svg)));
+  ["e", "B", "G", "D", "A", "E"].forEach((name, i) => {
+    const y = Y0 + i * SP;
+    svgEl("line", { x1: X0, y1: y, x2: X0 + FRETS * FW, y2: y, stroke: "#555", "stroke-width": 1 + i * 0.35 }, svg);
+    svgEl("text", { x: X0 - 10, y: y + 4, "text-anchor": "end", "font-size": 12, fill: "#555" }, svg).textContent = name;
+  });
+  for (let f = 1; f <= FRETS; f++) {
+    svgEl("text", { x: X0 + (f - 0.5) * FW, y: bottom + 18, "text-anchor": "middle", "font-size": 12, fill: "#555" }, svg).textContent = f;
+  }
+  return svgEl("g", {}, svg);
+})();
+
+function showNotes(beats) {
+  noteLayer.textContent = "";
+  for (const b of beats) for (const n of b.notes) {
+    if (n.fret < 1 || n.fret > FRETS) continue;
+    // в alphaTab string 1 = самая толстая; на грифе сверху самая тонкая
+    const row = 6 - n.string;
+    svgEl("circle", { cx: X0 + (n.fret - 0.5) * FW, cy: Y0 + row * SP, r: 9, fill: "#8b0000", stroke: "#fff", "stroke-width": 1.5 }, noteLayer);
+  }
+}
+
+let exercises = [];   // { label, bar, startTick, endTick }
+let current = 0;
+let ready = false;
+
+// упражнения = такты с подписью (\section) в alphaTex
+api.scoreLoaded.on(score => {
+  const bars = score.masterBars;
+  exercises = bars.filter(mb => mb.section).map(mb => ({ label: mb.section.text, bar: mb.index, startTick: mb.start }));
+  if (!exercises.length) exercises = [{ label: score.title || "Упражнение", bar: 0, startTick: 0 }];
+  const last = bars[bars.length - 1], end = last.start + last.calculateDuration();
+  exercises.forEach((e, i) => e.endTick = i + 1 < exercises.length ? exercises[i + 1].startTick : end);
+  current = 0;
+  buildList();
+  applyRange();
+});
+
+function buildList() {
+  const nav = $("#list");
+  nav.textContent = "";
+  exercises.forEach((e, i) => {
+    const b = document.createElement("button");
+    b.textContent = e.label;
+    b.className = i === current ? "active" : "";
+    b.onclick = () => select(i);
+    nav.appendChild(b);
+  });
+}
+
+// играть только выбранное упражнение
+function applyRange() {
+  if (!ready || !exercises.length) return;
+  const e = exercises[current];
+  api.playbackRange = { startTick: e.startTick, endTick: e.endTick };
+  api.tickPosition = e.startTick;
+}
+
+function select(i) {
+  current = i;
+  if (ready) api.stop();
+  showNotes([]);
+  [...$("#list").children].forEach((b, k) => b.classList.toggle("active", k === i));
+  applyRange();
+  scrollToExercise(i);
+}
+
+function scrollToExercise(i) {
+  try {
+    const b = api.boundsLookup.findMasterBarByIndex(exercises[i].bar);
+    if (!b) return;
+    $("#atwrap").scrollTo({ top: Math.max(0, $("#at").offsetTop + b.realBounds.y - 8), behavior: "smooth" });
+  } catch (e) { /* нотация ещё не отрисована */ }
+}
+
+api.soundFontLoad.on(e => status("звуки: " + Math.round(e.loaded / e.total * 100) + "%"));
+api.playerReady.on(() => { ready = true; $("#play").disabled = false; $("#stop").disabled = false; status("готово"); applyRange(); });
+api.renderFinished.on(() => { if (!ready) status("нотация отрисована"); });
+api.activeBeatsChanged.on(e => showNotes(e.activeBeats));
+api.playerFinished.on(() => showNotes([]));
+api.error.on(e => { console.error(e); status("ошибка: " + (e.message || e)); });
+api.playerStateChanged.on(e => { $("#play").textContent = e.state === 1 ? "❚❚ Pause" : "▶ Play"; });
+
+$("#play").onclick = () => api.playPause();
+$("#stop").onclick = () => { api.stop(); showNotes([]); };
+$("#loop").onchange = e => { api.isLooping = e.target.checked; };
+
+fetch("data/" + id + ".json?t=" + Date.now(), { cache: "no-store" })
+  .then(r => { if (!r.ok) throw new Error("файл не найден: data/" + id + ".json"); return r.json(); })
+  .then(d => {
+    $("#crumbs").innerHTML = "";
+    d.breadcrumbs.forEach((c, i, a) => {
+      const el = document.createElement(i === a.length - 1 ? "b" : "span");
+      el.textContent = c;
+      $("#crumbs").append(el, i < a.length - 1 ? " / " : "");
+    });
+    api.tex(d.alphatex);
+  })
+  .catch(e => { console.error(e); status(String(e.message || e)); });
+</script>
+</body>
+</html>

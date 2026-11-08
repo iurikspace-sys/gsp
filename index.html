@@ -162,7 +162,7 @@ const noteLayer = (function buildFretboard() {
   }
   [3, 5, 7, 9, 15, 17, 19, 21].forEach(f => svgEl("circle", { cx: X0 + (f - 0.5) * FW, cy: Y0 + 2.5 * SP, r: 5, fill: "#cdbb92" }, svg));
   [12, 24].forEach(f => [1.5, 3.5].forEach(m => svgEl("circle", { cx: X0 + (f - 0.5) * FW, cy: Y0 + m * SP, r: 5, fill: "#cdbb92" }, svg)));
-  ["e", "B", "G", "D", "A", "E"].forEach((name, i) => {
+  ["E", "B", "G", "D", "A", "E"].forEach((name, i) => {
     const y = Y0 + i * SP;
     svgEl("line", { x1: X0, y1: y, x2: X0 + FRETS * FW, y2: y, stroke: "#555", "stroke-width": 1 + i * 0.35 }, svg);
     svgEl("text", { x: X0 - 10, y: y + 4, "text-anchor": "end", "font-size": 12, fill: "#555" }, svg).textContent = name;
@@ -398,6 +398,18 @@ api.playerStateChanged.on(e => {
 $("#play").onclick = () => api.play();
 $("#pause").onclick = () => api.pause();
 $("#stop").onclick = () => { api.stop(); showNotes([]); };
+// пробел: старт, повторный пробел — стоп (курсор в начало); в полях ввода текста не срабатывает
+const isTyping = t => !!t && (t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable ||
+  (t.tagName === "INPUT" && /^(text|number|search|email|password)$/.test(t.type)));
+document.addEventListener("keydown", e => {
+  if (e.code !== "Space" || isTyping(e.target)) return;
+  e.preventDefault();
+  if (e.repeat) return;
+  if (e.target && (e.target.tagName === "BUTTON" || e.target.tagName === "INPUT")) e.target.blur();
+  if (playing) $("#stop").onclick();
+  else if (!$("#play").disabled) $("#play").onclick();
+});
+document.addEventListener("keyup", e => { if (e.code === "Space" && !isTyping(e.target)) e.preventDefault(); });
 $("#loop").onchange = e => { api.isLooping = e.target.checked; };
 
 // ---------- вкладки и главы ----------

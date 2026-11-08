@@ -401,7 +401,7 @@ $("#stop").onclick = () => { api.stop(); showNotes([]); };
 $("#loop").onchange = e => { api.isLooping = e.target.checked; };
 
 // ---------- вкладки и главы ----------
-const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
+const cap = s => { const t = s.replace(/^\d+/, "") || s; return t.charAt(0).toUpperCase() + t.slice(1); };   // число в начале имени задаёт порядок и не показывается
 const has = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
 
 function resolve() {

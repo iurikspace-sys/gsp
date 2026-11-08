@@ -1,5 +1,12 @@
 {
   "1chromatic": [
-    "chapter01"
+    "chapter01",
+    "chapter02"
+  ],
+  "2pentatonic": [
+    "chapter03"
+  ],
+  "3minor": [
+    "chapter05"
   ]
 }

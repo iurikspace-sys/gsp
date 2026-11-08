@@ -401,7 +401,8 @@ $("#stop").onclick = () => { api.stop(); showNotes([]); };
 $("#loop").onchange = e => { api.isLooping = e.target.checked; };
 
 // ---------- вкладки и главы ----------
-const cap = s => { const t = s.replace(/^\d+/, "") || s; return t.charAt(0).toUpperCase() + t.slice(1); };   // число в начале имени задаёт порядок и не показывается
+const cap = s => { const t = (s.replace(/^\d+/, "") || s).replace(/([a-zA-Z])(\d+)$/, "$1 $2"); return t.charAt(0).toUpperCase() + t.slice(1); };
+   // число в начале имени задаёт порядок и не показывается
 const has = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
 
 function resolve() {

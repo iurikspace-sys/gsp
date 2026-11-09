@@ -56,6 +56,14 @@
   #atwrap.usersel .at-cursor-bar { background: transparent; }       /* при выделении мышью подсветка такта не накладывается */
   .at-highlight * { fill: #2ea043; stroke: #2ea043; }
   #fretboard { margin-top: 8px; }
+  /* ряд боксов: мини-схемы (струны и точки), выбранный подсвечен */
+  #boxes { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0 4px; }
+  #boxes[hidden] { display: none; }
+  #boxes button { margin: 0; padding: 3px 6px 2px; background: #fff; border: 1px solid #ddd; border-radius: 6px; font-size: 12px; color: #666; }
+  #boxes button svg { display: block; }
+  #boxes button .d { fill: #9a9a9a; }
+  #boxes button.on { background: #e8f0fe; border-color: #7aa7f7; color: #222; font-weight: 600; }
+  #boxes button.on .d { fill: #8b0000; }
 </style>
 </head>
 <body>
@@ -63,6 +71,7 @@
   <div id="tabs"></div>
   <div id="crumbs">…</div>
   <span id="status">загрузка…</span>
+  <div id="boxes" hidden></div>
   <div id="fretboard"></div>
 </header>
 <div id="layout">
@@ -113,6 +122,8 @@ let catalog = {};          // { категория: [главы] } из data/ind
 const lastSelected = {};   // на каждой вкладке: { ch: глава, name: упражнение } — последнее выбранное в списке
 let pendingName = null;    // какое упражнение выбрать после загрузки главы (null = первое)
 let openCat = null, openCh = null;
+let boxes = [], curBox = 0;   // боксы открытой главы и номер выбранного
+const lastBox = {};           // на каждой вкладке: номер последнего выбранного бокса
 
 const $ = s => document.querySelector(s);
 const status = t => $("#status").textContent = t;
@@ -300,11 +311,11 @@ function buildList() {
 // история: последние 50 упражнений, на которых нажимали Play, отдельно для каждой вкладки (пока страница открыта)
 const HISTORY_MAX = 50;
 const playHistory = {};   // { вкладка: [ { ch, name }, ... ] }, новые сверху
-function pushHistory(c, ch, name) {
+function pushHistory(c, ch, name, box) {
   const h = playHistory[c] || (playHistory[c] = []);
-  const i = h.findIndex(x => x.ch === ch && x.name === name);
+  const i = h.findIndex(x => x.ch === ch && x.name === name && x.box === box);
   if (i >= 0) h.splice(i, 1);
-  h.unshift({ ch, name });
+  h.unshift({ ch, name, box });
   if (h.length > HISTORY_MAX) h.length = HISTORY_MAX;
 }
 function buildHistory() {
@@ -319,15 +330,17 @@ function buildHistory() {
   h.forEach(x => {
     const b = document.createElement("button");
     b.className = "hi";
-    b.textContent = cap(x.ch) + " · " + x.name;
-    b.onclick = () => openExercise(openCat, x.ch, x.name);
+    b.textContent = cap(x.ch) + " · " + x.name + (x.box !== undefined ? " · " + (x.box + 1) + "-й бокс" : "");
+    b.onclick = () => openExercise(openCat, x.ch, x.name, x.box);
     box.appendChild(b);
   });
 }
-function openExercise(c, ch, name) {
+function openExercise(c, ch, name, box) {
   lastSelected[c] = { ch, name };
+  if (box !== undefined) lastBox[c] = box;
   collapsed[c + "/" + ch] = false;
   if (c === openCat && ch === openCh) {
+    if (box !== undefined && box !== curBox) { setBox(box, name); return; }
     buildList();
     const i = exercises.findIndex(e => e.name === name);
     if (i >= 0) select(i);
@@ -392,7 +405,7 @@ api.playerStateChanged.on(e => {
   playing = e.state === 1;
   updateTransport();
   // Play нажат: упражнение попадает в историю вкладки
-  if (playing && openCat && exercises[current]) { pushHistory(openCat, openCh, exercises[current].name); buildHistory(); }
+  if (playing && openCat && exercises[current]) { pushHistory(openCat, openCh, exercises[current].name, boxes.length > 1 ? curBox : undefined); buildHistory(); }
 });
 
 $("#play").onclick = () => api.play();
@@ -449,6 +462,50 @@ function showCrumbs(c, ch) {
   });
 }
 
+// ---------- боксы: ряд мини-схем под вкладками ----------
+function buildBoxRow() {
+  const row = $("#boxes");
+  row.textContent = "";
+  const okDots = b => Array.isArray(b.dots) && b.dots.length > 0;
+  if (boxes.length < 2 || !boxes.every(okDots)) { row.hidden = true; return; }
+  row.hidden = false;
+  const span = b => { const f = b.dots.map(d => d[1]); return Math.max(...f) - Math.min(...f) + 1; };
+  const cells = Math.max(...boxes.map(span));
+  const CW = 14, SPB = 9, PAD = 5, R = 3.4;
+  const w = cells * CW + 2 * PAD, h = 5 * SPB + 2 * PAD;
+  boxes.forEach((b, i) => {
+    const minF = Math.min(...b.dots.map(d => d[1]));
+    const btn = document.createElement("button");
+    btn.title = (i + 1) + "-й бокс";
+    const svg = svgEl("svg", { viewBox: "0 0 " + w + " " + h, width: w, height: h }, btn);
+    for (let k = 0; k <= cells; k++) svgEl("line", { x1: PAD + k * CW, y1: PAD, x2: PAD + k * CW, y2: PAD + 5 * SPB, stroke: "#bbb", "stroke-width": 1 }, svg);
+    for (let s = 0; s < 6; s++) svgEl("line", { x1: PAD, y1: PAD + s * SPB, x2: PAD + cells * CW, y2: PAD + s * SPB, stroke: "#777", "stroke-width": 1 }, svg);
+    // в данных струна 1 = тонкая E (сверху), как на схеме
+    b.dots.forEach(d => svgEl("circle", { cx: PAD + (d[1] - minF + 0.5) * CW, cy: PAD + (d[0] - 1) * SPB, r: R, class: "d" }, svg));
+    const cap = document.createElement("div");
+    cap.textContent = (i + 1) + "-й бокс";
+    btn.appendChild(cap);
+    btn.onclick = () => setBox(i);
+    row.appendChild(btn);
+  });
+  markBoxes();
+}
+function markBoxes() {
+  Array.from($("#boxes").children).forEach((b, i) => b.classList.toggle("on", i === curBox));
+}
+// переключение бокса: та же глава и то же упражнение, но с нотами выбранного бокса
+function setBox(i, name) {
+  if (i < 0 || i >= boxes.length || (i === curBox && name === undefined)) return;
+  curBox = i;
+  if (openCat) lastBox[openCat] = i;
+  markBoxes();
+  pendingName = name !== undefined ? name : (exercises[current] ? exercises[current].name : null);
+  if (ready) api.stop();
+  showNotes([]);
+  scrollAfterRender = true;
+  api.tex(boxes[i].alphatex);
+}
+
 let loadSeq = 0;
 function loadChapter(c, ch) {
   const my = ++loadSeq;
@@ -459,17 +516,23 @@ function loadChapter(c, ch) {
     .then(r => { if (!r.ok) throw new Error("файл не найден: data/" + c + "/" + ch + ".json"); return r.json(); })
     .then(d => {
       if (my !== loadSeq) return;
-      if (!d.alphatex) throw new Error("в файле главы нет alphatex");
+      let bx = null;
+      if (d && Array.isArray(d.boxes) && d.boxes.length) bx = d.boxes;
+      else if (d && d.alphatex) bx = [{ name: "", dots: [], alphatex: d.alphatex }];   // старый формат: один бокс без схемы
+      if (!bx || bx.some(b => !b || !b.alphatex)) throw new Error("в файле главы нет боксов с alphatex");
+      boxes = bx;
+      curBox = lastBox[c] !== undefined && lastBox[c] < boxes.length ? lastBox[c] : 0;
+      buildBoxRow();
       $("#atwrap").scrollTop = 0;
       broken = false;
       $("#at").style.visibility = "";
       updateTransport();
-      api.tex(d.alphatex);
+      api.tex(boxes[curBox].alphatex);
     })
     .catch(e => {
       if (my !== loadSeq) return;
       console.error(e); status(String(e.message || e));
-      exercises = []; buildList();
+      exercises = []; boxes = []; buildBoxRow(); buildList();
       // не оставляем на экране чужую главу
       if (ready) api.stop();
       showNotes([]);
@@ -488,7 +551,7 @@ function route() {
   if (c === openCat && ch === openCh) return;
   openCat = c; openCh = ch;
   pendingName = lastSelected[c] && lastSelected[c].ch === ch ? lastSelected[c].name : null;
-  exercises = [];
+  exercises = []; boxes = []; buildBoxRow();
   buildTabs();
   showCrumbs(c, ch);
   buildList();

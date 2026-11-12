@@ -33,6 +33,9 @@
   #panel .views button { padding: 6px 10px; }
   #panel .views button svg { width: 32px; height: 28px; display: block; }
   #panel .views button.on { background: #e8f0fe; border-color: #7aa7f7; font-weight: 600; }
+  #panel .reps button { padding: 5px 8px; font-size: 13px; }
+  #panel .reps button.on { background: #e8f0fe; border-color: #7aa7f7; font-weight: 600; }
+  #panel .reps.off button { opacity: .5; }
   #atwrap { position: relative; overflow-y: auto; padding: 16px 0; isolation: isolate; contain: paint; }
   #panel { zoom: var(--ui); overflow-y: auto; padding: 16px 0; }
   #panel section { background: #fff; border: 1px solid #ddd; border-radius: 6px; padding: 10px; margin-bottom: 8px; }
@@ -84,6 +87,7 @@
         <button id="play" title="Play" disabled>▶</button><button id="pause" title="Pause" disabled>❚❚</button><button id="stop" title="Stop" disabled>■</button>
       </div>
       <label style="margin-top:8px"><input type="checkbox" id="loop" checked> Повтор</label>
+      <div class="row reps"><button data-rep="exercise" title="Повторять всё упражнение">Упражнение</button><button data-rep="bar" title="Повторять такт, где нажали Play">Такт</button></div>
     </section>
     <section>
       <h3>Темп</h3>
@@ -199,7 +203,7 @@ let current = 0;
 let ready = false;
 
 // ---------- панель метронома; значения запоминаются в браузере ----------
-const DEFAULTS = { bpm: 75, metro: false, metroVol: 80, countIn: false, master: 100, view: "both" };
+const DEFAULTS = { bpm: 75, metro: false, metroVol: 80, countIn: false, master: 100, view: "both", repeat: true, repMode: "exercise" };
 function loadSettings() { try { return JSON.parse(localStorage.getItem("seqSettings")) || {}; } catch (e) { return {}; } }
 function saveSettings() { try { localStorage.setItem("seqSettings", JSON.stringify(st)); } catch (e) { /* хранилище недоступно */ } }
 const clamp = (v, lo, hi, def) => { v = Number(v); return Number.isFinite(v) ? Math.min(hi, Math.max(lo, Math.round(v))) : def; };
@@ -209,6 +213,8 @@ st.metroVol = clamp(st.metroVol, 0, 100, DEFAULTS.metroVol);
 st.master = clamp(st.master, 0, 100, DEFAULTS.master);
 st.metro = st.metro === true;
 st.countIn = st.countIn === true;
+st.repeat = st.repeat !== false;
+st.repMode = st.repMode === "bar" ? "bar" : "exercise";
 st.view = VIEW_PROFILE[st.view] ? st.view : "both";
 let baseTempo = 75;   // темп, записанный в файле упражнений
 
@@ -229,6 +235,10 @@ function syncPanel() {
   $("#metroVol").value = st.metroVol;
   $("#countIn").checked = st.countIn;
   $("#master").value = st.master;
+  $("#loop").checked = st.repeat;
+  api.isLooping = st.repeat;
+  document.querySelectorAll("#panel button[data-rep]").forEach(b => b.classList.toggle("on", b.dataset.rep === st.repMode));
+  document.querySelector("#panel .reps").classList.toggle("off", !st.repeat);
   document.querySelectorAll("#panel button[data-view]").forEach(b => b.classList.toggle("on", b.dataset.view === st.view));
 }
 function changed() { syncPanel(); applyAudio(); saveSettings(); }
@@ -262,6 +272,7 @@ api.scoreLoaded.on(score => {
   baseTempo = score.tempo || 75;
   exercises = bars.filter(mb => mb.section).map(mb => ({ label: mb.section.text, name: mb.section.text.split(": ")[0], bar: mb.index, startTick: mb.start }));
   if (!exercises.length) exercises = [{ label: score.title || "Упражнение", name: score.title || "Упражнение", bar: 0, startTick: 0 }];
+  barRanges = bars.map(mb => ({ startTick: mb.start, endTick: mb.start + mb.calculateDuration() }));
   const last = bars[bars.length - 1], end = last.start + last.calculateDuration();
   exercises.forEach((e, i) => e.endTick = i + 1 < exercises.length ? exercises[i + 1].startTick : end);
   const idx = exercises.findIndex(e => e.name === pendingName);   // упражнение, выбранное в этой вкладке последним
@@ -347,24 +358,48 @@ function openExercise(c, ch, name, box) {
   } else location.hash = c + "/" + ch;
 }
 
-// играть только выбранное упражнение
+// диапазон воспроизведения: упражнение или (режим «Повтор → Такт») один такт
+let ourRange = null;   // диапазон, который выставили мы; любой другой — выделение мышью
+let barRanges = [];    // такты главы: { startTick, endTick }
+const exRange = e => ({ startTick: e.startTick, endTick: e.endTick });
+const sameRange = (a, b) => !!a && !!b && a.startTick === b.startTick && a.endTick === b.endTick;
+function setRange(r, keepTick) {
+  const t = api.tickPosition;
+  ourRange = r;
+  api.playbackRange = r;   // alphaTab ставит курсор в начало диапазона
+  if (keepTick) api.tickPosition = Math.min(Math.max(t, r.startTick), r.endTick - 1);
+  markRange(false);
+}
+const userSelActive = () => { const r = api.playbackRange; return !!r && !sameRange(r, ourRange); };
+function barAt(tick, ex) {
+  const inEx = barRanges.filter(b => b.startTick >= ex.startTick && b.endTick <= ex.endTick);
+  return inEx.find(b => tick >= b.startTick && tick < b.endTick) || inEx[0] || exRange(ex);
+}
 function applyRange() {
   if (!ready || !exercises.length) return;
   const e = exercises[current];
-  api.playbackRange = { startTick: e.startTick, endTick: e.endTick };
+  setRange(exRange(e), false);
   api.tickPosition = e.startTick;
-  markRange(false);
 }
-// какой диапазон сейчас: наш (упражнение) или выделенный мышью; от этого зависит, что подсвечивать
+// какой диапазон сейчас: наш или выделенный мышью; от этого зависит, что подсвечивать
 function markRange(user) {
   const w = $("#atwrap");
   w.classList.toggle("exrange", !user);
   w.classList.toggle("usersel", user);
 }
 if (api.playbackRangeChanged) api.playbackRangeChanged.on(e => {
-  const r = e && e.playbackRange, ex = exercises[current];
-  if (!r || !ex) { $("#atwrap").classList.remove("exrange", "usersel"); return; }
-  markRange(!(r.startTick === ex.startTick && r.endTick === ex.endTick));
+  const r = e && e.playbackRange;
+  if (!r || !exercises[current]) { $("#atwrap").classList.remove("exrange", "usersel"); return; }
+  markRange(!sameRange(r, ourRange));
+});
+// простой клик по нотам: alphaTab сбрасывает диапазон (играло бы до конца главы) — возвращаем наш, курсор остаётся где кликнули
+if (api.beatMouseUp) api.beatMouseUp.on(() => {
+  if (!ready || !exercises.length || api.playbackRange) return;
+  const e = exercises[current];
+  let t = api.tickPosition;
+  if (t < e.startTick || t >= e.endTick) t = e.startTick;
+  setRange(exRange(e), false);
+  api.tickPosition = t;
 });
 
 function select(i) {
@@ -403,12 +438,26 @@ api.playerFinished.on(() => showNotes([]));
 api.error.on(e => { console.error(e); status("ошибка: " + (e.message || e)); });
 api.playerStateChanged.on(e => {
   playing = e.state === 1;
+  paused = e.state === 0 && !e.stopped;
   updateTransport();
   // Play нажат: упражнение попадает в историю вкладки
   if (playing && openCat && exercises[current]) { pushHistory(openCat, openCh, exercises[current].name, boxes.length > 1 ? curBox : undefined); buildHistory(); }
 });
 
-$("#play").onclick = () => api.play();
+let paused = false;   // пауза посреди воспроизведения: Play продолжает с того же места, диапазон не пересчитываем
+function startPlay() {
+  if (!ready || playing || broken) return;
+  if (!paused && !userSelActive() && exercises.length) {
+    const e = exercises[current];
+    if (st.repeat && st.repMode === "bar") {
+      let t = api.tickPosition;
+      if (t < e.startTick || t >= e.endTick) t = e.startTick;
+      setRange(barAt(t, e), false);   // такт, где нажали Play
+    } else if (!sameRange(api.playbackRange, exRange(e))) setRange(exRange(e), true);
+  }
+  api.play();
+}
+$("#play").onclick = startPlay;
 $("#pause").onclick = () => api.pause();
 $("#stop").onclick = () => { api.stop(); showNotes([]); };
 // пробел: старт, повторный пробел — стоп (курсор в начало); в полях ввода текста не срабатывает
@@ -423,7 +472,15 @@ document.addEventListener("keydown", e => {
   else if (!$("#play").disabled) $("#play").onclick();
 });
 document.addEventListener("keyup", e => { if (e.code === "Space" && !isTyping(e.target)) e.preventDefault(); });
-$("#loop").onchange = e => { api.isLooping = e.target.checked; };
+function refreshRange() {
+  if (!ready || !exercises.length || userSelActive()) return;
+  const e = exercises[current];
+  if (st.repeat && st.repMode === "bar") { if (playing) setRange(barAt(api.tickPosition, e), true); }
+  else if (!sameRange(api.playbackRange, exRange(e))) setRange(exRange(e), true);
+}
+function repeatChanged() { syncPanel(); saveSettings(); refreshRange(); }
+$("#loop").onchange = e => { st.repeat = e.target.checked; repeatChanged(); };
+document.querySelectorAll("#panel button[data-rep]").forEach(b => b.onclick = () => { st.repMode = b.dataset.rep; repeatChanged(); });
 
 // ---------- вкладки и главы ----------
 const cap = s => { const t = (s.replace(/^\d+/, "") || s).replace(/([a-zA-Z])(\d+)$/, "$1 $2"); return t.charAt(0).toUpperCase() + t.slice(1); };

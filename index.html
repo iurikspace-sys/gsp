@@ -436,6 +436,7 @@ api.renderFinished.on(() => {
 api.activeBeatsChanged.on(e => showNotes(e.activeBeats));
 api.playerFinished.on(() => showNotes([]));
 api.error.on(e => { console.error(e); status("ошибка: " + (e.message || e)); });
+let paused = false;   // пауза посреди воспроизведения: Play продолжает с того же места, диапазон не пересчитываем
 api.playerStateChanged.on(e => {
   playing = e.state === 1;
   paused = e.state === 0 && !e.stopped;
@@ -444,7 +445,6 @@ api.playerStateChanged.on(e => {
   if (playing && openCat && exercises[current]) { pushHistory(openCat, openCh, exercises[current].name, boxes.length > 1 ? curBox : undefined); buildHistory(); }
 });
 
-let paused = false;   // пауза посреди воспроизведения: Play продолжает с того же места, диапазон не пересчитываем
 function startPlay() {
   if (!ready || playing || broken) return;
   if (!paused && !userSelActive() && exercises.length) {

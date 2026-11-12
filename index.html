@@ -217,10 +217,11 @@ st.repeat = st.repeat !== false;
 st.repMode = st.repMode === "bar" ? "bar" : "exercise";
 st.view = VIEW_PROFILE[st.view] ? st.view : "both";
 let baseTempo = 75;   // темп, записанный в файле упражнений
+let halfSpeed = false;   // Shift+Пробел: этот запуск идёт на 50% темпа
 
 function applyAudio() {
   if (!ready) return;
-  api.playbackSpeed = st.bpm / baseTempo;
+  api.playbackSpeed = st.bpm / baseTempo * (halfSpeed ? 0.5 : 1);
   api.metronomeVolume = st.metro ? st.metroVol / 100 : 0;
   api.countInVolume = st.countIn ? 1 : 0;
   // громкость упражнения — это громкость дорожек; общая громкость остаётся 100%, чтобы не менять щелчок
@@ -434,12 +435,13 @@ api.renderFinished.on(() => {
   if (scrollAfterRender) { scrollAfterRender = false; scrollToExercise(current); }   // после смены вида возвращаемся к выбранному упражнению
 });
 api.activeBeatsChanged.on(e => showNotes(e.activeBeats));
-api.playerFinished.on(() => showNotes([]));
+api.playerFinished.on(() => { showNotes([]); if (halfSpeed) { halfSpeed = false; applyAudio(); } });
 api.error.on(e => { console.error(e); status("ошибка: " + (e.message || e)); });
 let paused = false;   // пауза посреди воспроизведения: Play продолжает с того же места, диапазон не пересчитываем
 api.playerStateChanged.on(e => {
   playing = e.state === 1;
   paused = e.state === 0 && !e.stopped;
+  if (e.state === 0 && e.stopped && halfSpeed) { halfSpeed = false; applyAudio(); }   // запуск на 50% закончился
   updateTransport();
   // Play нажат: упражнение попадает в историю вкладки
   if (playing && openCat && exercises[current]) { pushHistory(openCat, openCh, exercises[current].name, boxes.length > 1 ? curBox : undefined); buildHistory(); }
@@ -469,7 +471,7 @@ document.addEventListener("keydown", e => {
   if (e.repeat) return;
   if (e.target && (e.target.tagName === "BUTTON" || e.target.tagName === "INPUT")) e.target.blur();
   if (playing) $("#stop").onclick();
-  else if (!$("#play").disabled) $("#play").onclick();
+  else if (!$("#play").disabled) { halfSpeed = e.shiftKey; applyAudio(); $("#play").onclick(); }
 });
 document.addEventListener("keyup", e => { if (e.code === "Space" && !isTyping(e.target)) e.preventDefault(); });
 function refreshRange() {

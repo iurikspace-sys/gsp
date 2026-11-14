@@ -218,6 +218,8 @@ st.repMode = st.repMode === "bar" ? "bar" : "exercise";
 st.view = VIEW_PROFILE[st.view] ? st.view : "both";
 let baseTempo = 75;   // темп, записанный в файле упражнений
 let halfSpeed = false;   // Shift+Пробел: этот запуск идёт на 50% темпа
+let beatList = [];       // ноты главы: { tick, beat } — для шагов стрелками
+let stepping = false, stepTimer = 0;   // идёт шаг стрелкой: не считать его запуском воспроизведения
 
 function applyAudio() {
   if (!ready) return;
@@ -273,6 +275,9 @@ api.scoreLoaded.on(score => {
   baseTempo = score.tempo || 75;
   exercises = bars.filter(mb => mb.section).map(mb => ({ label: mb.section.text, name: mb.section.text.split(": ")[0], bar: mb.index, startTick: mb.start }));
   if (!exercises.length) exercises = [{ label: score.title || "Упражнение", name: score.title || "Упражнение", bar: 0, startTick: 0 }];
+  beatList = [];
+  const stf = score.tracks[0] && score.tracks[0].staves[0];
+  if (stf) stf.bars.forEach(b => (b.voices[0] ? b.voices[0].beats : []).forEach(bt => { if (!bt.isRest) beatList.push({ tick: bt.absolutePlaybackStart, beat: bt }); }));
   barRanges = bars.map(mb => ({ startTick: mb.start, endTick: mb.start + mb.calculateDuration() }));
   const last = bars[bars.length - 1], end = last.start + last.calculateDuration();
   exercises.forEach((e, i) => e.endTick = i + 1 < exercises.length ? exercises[i + 1].startTick : end);
@@ -399,7 +404,7 @@ if (api.beatMouseUp) api.beatMouseUp.on(() => {
   const e = exercises[current];
   let t = api.tickPosition;
   if (t < e.startTick || t >= e.endTick) t = e.startTick;
-  setRange(exRange(e), false);
+  setRange(st.repeat && st.repMode === "bar" ? barAt(t, e) : exRange(e), false);
   api.tickPosition = t;
 });
 
@@ -444,7 +449,7 @@ api.playerStateChanged.on(e => {
   if (e.state === 0 && e.stopped && halfSpeed) { halfSpeed = false; applyAudio(); }   // запуск на 50% закончился
   updateTransport();
   // Play нажат: упражнение попадает в историю вкладки
-  if (playing && openCat && exercises[current]) { pushHistory(openCat, openCh, exercises[current].name, boxes.length > 1 ? curBox : undefined); buildHistory(); }
+  if (playing && !stepping && openCat && exercises[current]) { pushHistory(openCat, openCh, exercises[current].name, boxes.length > 1 ? curBox : undefined); buildHistory(); }
 });
 
 function startPlay() {
@@ -474,6 +479,50 @@ document.addEventListener("keydown", e => {
   else if (!$("#play").disabled) { halfSpeed = e.shiftKey; applyAudio(); $("#play").onclick(); }
 });
 document.addEventListener("keyup", e => { if (e.code === "Space" && !isTyping(e.target)) e.preventDefault(); });
+// шаги стрелками: звучит одна нота, воспроизведение на паузе, курсор на ней
+function stepTo(tick, item) {
+  const e = exercises[current];
+  if (st.repeat && st.repMode === "bar" && !userSelActive()) {
+    const r = barAt(tick, e);
+    if (!sameRange(api.playbackRange, r)) setRange(r, false);
+  }
+  api.tickPosition = tick;
+  if (!item) return;
+  stepping = true;
+  clearTimeout(stepTimer);
+  stepTimer = setTimeout(() => { stepping = false; }, 800);
+  try { api.playBeat(item.beat); } catch (err) { console.error(err); }
+  showNotes([item.beat]);
+}
+function stepNote(dir) {
+  if (!ready || !exercises.length) return;
+  if (playing) api.pause();
+  const e = exercises[current], cur = api.tickPosition;
+  const list = beatList.filter(b => b.tick >= e.startTick && b.tick < e.endTick);
+  const it = dir > 0 ? list.find(b => b.tick > cur + 1) : [...list].reverse().find(b => b.tick < cur - 1);
+  if (it) stepTo(it.tick, it);
+}
+function stepBar(dir) {
+  if (!ready || !exercises.length) return;
+  if (playing) api.pause();
+  const e = exercises[current], cur = api.tickPosition;
+  const bars = barRanges.filter(b => b.startTick >= e.startTick && b.endTick <= e.endTick);
+  let tgt;
+  if (dir > 0) tgt = bars.find(b => b.startTick > cur + 1);
+  else {
+    const here = bars.find(b => cur >= b.startTick && cur < b.endTick);
+    tgt = here && cur > here.startTick + 1 ? here : [...bars].reverse().find(b => b.startTick < cur - 1);   // сначала в начало текущего такта
+  }
+  if (tgt) stepTo(tgt.startTick, beatList.find(b => b.tick >= tgt.startTick));
+}
+document.addEventListener("keydown", e => {
+  if (e.code !== "ArrowLeft" && e.code !== "ArrowRight") return;
+  if (isTyping(e.target) || e.ctrlKey || e.altKey || e.metaKey) return;
+  if (e.target && e.target.tagName === "INPUT" && e.target.type === "range") return;
+  e.preventDefault();
+  const dir = e.code === "ArrowRight" ? 1 : -1;
+  if (e.shiftKey) stepBar(dir); else stepNote(dir);
+});
 function refreshRange() {
   if (!ready || !exercises.length || userSelActive()) return;
   const e = exercises[current];

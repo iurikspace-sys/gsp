@@ -219,7 +219,7 @@ st.view = VIEW_PROFILE[st.view] ? st.view : "both";
 let baseTempo = 75;   // темп, записанный в файле упражнений
 let halfSpeed = false;   // Shift+Пробел: этот запуск идёт на 50% темпа
 let beatList = [];       // ноты главы: { tick, beat } — для шагов стрелками
-let stepping = false, stepTimer = 0;   // идёт шаг стрелкой: не считать его запуском воспроизведения
+let stepping = false, stepTimer = 0, stepTick = null;   // идёт шаг стрелкой: не считать его запуском воспроизведения
 
 function applyAudio() {
   if (!ready) return;
@@ -440,7 +440,7 @@ api.renderFinished.on(() => {
   if (scrollAfterRender) { scrollAfterRender = false; scrollToExercise(current); }   // после смены вида возвращаемся к выбранному упражнению
 });
 api.activeBeatsChanged.on(e => showNotes(e.activeBeats));
-api.playerFinished.on(() => { showNotes([]); if (halfSpeed) { halfSpeed = false; applyAudio(); } });
+api.playerFinished.on(() => { showNotes([]); if (halfSpeed && !st.repeat) { halfSpeed = false; applyAudio(); } });   // при повторе это конец круга, а не запуска
 api.error.on(e => { console.error(e); status("ошибка: " + (e.message || e)); });
 let paused = false;   // пауза посреди воспроизведения: Play продолжает с того же места, диапазон не пересчитываем
 api.playerStateChanged.on(e => {
@@ -453,6 +453,7 @@ api.playerStateChanged.on(e => {
 });
 
 function startPlay() {
+  if (stepping) { clearTimeout(stepTimer); stepping = false; applyAudio(); return; }   // Play во время шага: просто играем дальше
   if (!ready || playing || broken) return;
   if (!paused && !userSelActive() && exercises.length) {
     const e = exercises[current];
@@ -466,7 +467,7 @@ function startPlay() {
 }
 $("#play").onclick = startPlay;
 $("#pause").onclick = () => api.pause();
-$("#stop").onclick = () => { api.stop(); showNotes([]); };
+$("#stop").onclick = () => { clearTimeout(stepTimer); stepping = false; api.stop(); showNotes([]); applyAudio(); };
 // пробел: старт, повторный пробел — стоп (курсор в начало); в полях ввода текста не срабатывает
 const isTyping = t => !!t && (t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable ||
   (t.tagName === "INPUT" && /^(text|number|search|email|password)$/.test(t.type)));
@@ -486,18 +487,21 @@ function stepTo(tick, item) {
     const r = barAt(tick, e);
     if (!sameRange(api.playbackRange, r)) setRange(r, false);
   }
+  clearTimeout(stepTimer);
   api.tickPosition = tick;
+  stepTick = tick;
   if (!item) return;
   stepping = true;
-  clearTimeout(stepTimer);
-  stepTimer = setTimeout(() => { stepping = false; }, 800);
-  try { api.playBeat(item.beat); } catch (err) { console.error(err); }
+  api.metronomeVolume = 0; api.countInVolume = 0;   // на шаге без щелчка и предтакта
+  api.play();
   showNotes([item.beat]);
+  const ms = Math.min(1500, Math.max(150, item.beat.playbackDuration / 960 * 60000 / (baseTempo * api.playbackSpeed)));
+  stepTimer = setTimeout(() => { api.pause(); api.tickPosition = tick; stepping = false; applyAudio(); }, ms);
 }
 function stepNote(dir) {
   if (!ready || !exercises.length) return;
   if (playing) api.pause();
-  const e = exercises[current], cur = api.tickPosition;
+  const e = exercises[current], cur = stepping && stepTick !== null ? stepTick : api.tickPosition;
   const list = beatList.filter(b => b.tick >= e.startTick && b.tick < e.endTick);
   const it = dir > 0 ? list.find(b => b.tick > cur + 1) : [...list].reverse().find(b => b.tick < cur - 1);
   if (it) stepTo(it.tick, it);
@@ -505,7 +509,7 @@ function stepNote(dir) {
 function stepBar(dir) {
   if (!ready || !exercises.length) return;
   if (playing) api.pause();
-  const e = exercises[current], cur = api.tickPosition;
+  const e = exercises[current], cur = stepping && stepTick !== null ? stepTick : api.tickPosition;
   const bars = barRanges.filter(b => b.startTick >= e.startTick && b.endTick <= e.endTick);
   let tgt;
   if (dir > 0) tgt = bars.find(b => b.startTick > cur + 1);

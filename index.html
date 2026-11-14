@@ -462,8 +462,9 @@ api.playerStateChanged.on(e => {
 let playStarting = false;
 function startPlay() {
   if (playStarting) return;
-  const wasStep = stepping;
+  const wasStep = stepping, hadStep = stepping || stepPending, hs = halfSpeed;
   if (wasStep) { api.pause(); endStep(); }   // Play во время шага: возвращаем диапазон и играем с этой ноты
+  if (hadStep) api.stop();   // чистый старт: после шагов (особенно с паузы) плеер мог остаться на старой позиции
   let moved = restoreAfterStep();
   if (!ready || (playing && !wasStep) || broken) return;
   if (!paused && !userSelActive() && exercises.length) {
@@ -477,7 +478,7 @@ function startPlay() {
     } else if (!sameRange(api.playbackRange, exRange(e))) { setRange(exRange(e), true); moved = true; }
   }
   // сразу после смены диапазона и позиции play() теряет позицию (тишина с начала такта до курсора): даём плееру применить их
-  if (moved) { playStarting = true; setTimeout(() => { playStarting = false; api.play(); }, 100); }
+  if (moved) { playStarting = true; setTimeout(() => { playStarting = false; if (hadStep) { halfSpeed = hs; applyAudio(); } api.play(); }, 100); }
   else api.play();
 }
 $("#play").onclick = startPlay;

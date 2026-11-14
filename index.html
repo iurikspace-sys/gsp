@@ -219,7 +219,7 @@ st.view = VIEW_PROFILE[st.view] ? st.view : "both";
 let baseTempo = 75;   // темп, записанный в файле упражнений
 let halfSpeed = false;   // Shift+Пробел: этот запуск идёт на 50% темпа
 let beatList = [];       // ноты главы: { tick, beat } — для шагов стрелками
-let stepping = false, stepTimer = 0, stepTick = null, stepHold = null;   // stepHold: куда вернуть курсор после паузы шага   // идёт шаг стрелкой: не считать его запуском воспроизведения
+let stepping = false, stepTimer = 0, stepTick = null, stepSaved = null, stepBeat = null;   // шаг стрелкой: играем диапазон из одной ноты, потом возвращаем прежний
 
 function applyAudio() {
   if (!ready) return;
@@ -394,13 +394,16 @@ function markRange(user) {
   w.classList.toggle("usersel", user);
 }
 if (api.playbackRangeChanged) api.playbackRangeChanged.on(e => {
+  if (stepping) return;   // шаг стрелкой временно сужает диапазон: подсветку не трогаем
   const r = e && e.playbackRange;
   if (!r || !exercises[current]) { $("#atwrap").classList.remove("exrange", "usersel"); return; }
   markRange(!sameRange(r, ourRange));
 });
 // простой клик по нотам: alphaTab сбрасывает диапазон (играло бы до конца главы) — возвращаем наш, курсор остаётся где кликнули
 if (api.beatMouseUp) api.beatMouseUp.on(() => {
-  if (!ready || !exercises.length || api.playbackRange) return;
+  const wasStep = stepping;
+  if (wasStep) { stepping = false; clearTimeout(stepTimer); api.isLooping = st.repeat; applyAudio(); }
+  if (!ready || !exercises.length || (api.playbackRange && !wasStep)) return;
   const e = exercises[current];
   let t = api.tickPosition;
   if (t < e.startTick || t >= e.endTick) t = e.startTick;
@@ -440,13 +443,12 @@ api.renderFinished.on(() => {
   if (scrollAfterRender) { scrollAfterRender = false; scrollToExercise(current); }   // после смены вида возвращаемся к выбранному упражнению
 });
 api.activeBeatsChanged.on(e => showNotes(e.activeBeats));
-api.playerFinished.on(() => { showNotes([]); if (halfSpeed && !st.repeat) { halfSpeed = false; applyAudio(); } });   // при повторе это конец круга, а не запуска
+api.playerFinished.on(() => { if (stepping) { endStep(); return; } showNotes([]); if (halfSpeed && !st.repeat) { halfSpeed = false; applyAudio(); } });   // при повторе это конец круга, а не запуска
 api.error.on(e => { console.error(e); status("ошибка: " + (e.message || e)); });
 let paused = false;   // пауза посреди воспроизведения: Play продолжает с того же места, диапазон не пересчитываем
 api.playerStateChanged.on(e => {
   playing = e.state === 1;
   paused = e.state === 0 && !e.stopped;
-  if (e.state === 0 && stepHold !== null) { api.tickPosition = stepHold; stepHold = null; }   // пауза шага: курсор остаётся на сыгранной ноте
   if (e.state === 0 && e.stopped && halfSpeed) { halfSpeed = false; applyAudio(); }   // запуск на 50% закончился
   updateTransport();
   // Play нажат: упражнение попадает в историю вкладки
@@ -454,8 +456,9 @@ api.playerStateChanged.on(e => {
 });
 
 function startPlay() {
-  if (stepping) { clearTimeout(stepTimer); stepping = false; applyAudio(); return; }   // Play во время шага: просто играем дальше
-  if (!ready || playing || broken) return;
+  const wasStep = stepping;
+  if (wasStep) { api.pause(); endStep(); }   // Play во время шага: возвращаем диапазон и играем с этой ноты
+  if (!ready || (playing && !wasStep) || broken) return;
   if (!paused && !userSelActive() && exercises.length) {
     const e = exercises[current];
     if (st.repeat && st.repMode === "bar") {
@@ -468,7 +471,7 @@ function startPlay() {
 }
 $("#play").onclick = startPlay;
 $("#pause").onclick = () => api.pause();
-$("#stop").onclick = () => { clearTimeout(stepTimer); stepping = false; api.stop(); showNotes([]); applyAudio(); };
+$("#stop").onclick = () => { if (stepping) endStep(); api.stop(); showNotes([]); applyAudio(); };
 // пробел: старт, повторный пробел — стоп (курсор в начало); в полях ввода текста не срабатывает
 const isTyping = t => !!t && (t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable ||
   (t.tagName === "INPUT" && /^(text|number|search|email|password)$/.test(t.type)));
@@ -484,27 +487,37 @@ document.addEventListener("keyup", e => { if (e.code === "Space" && !isTyping(e.
 // шаги стрелками: звучит одна нота, воспроизведение на паузе, курсор на ней
 function stepTo(tick, item) {
   const e = exercises[current];
-  if (st.repeat && st.repMode === "bar" && !userSelActive()) {
-    const r = barAt(tick, e);
-    if (!sameRange(api.playbackRange, r)) setRange(r, false);
-  }
-  clearTimeout(stepTimer);
-  api.tickPosition = tick;
   stepTick = tick;
-  if (!item) return;
+  if (!item) {
+    if (st.repeat && st.repMode === "bar" && !userSelActive()) {
+      const r = barAt(tick, e);
+      if (!sameRange(api.playbackRange, r)) setRange(r, false);
+    }
+    api.tickPosition = tick;
+    return;
+  }
+  if (!stepping) stepSaved = { wasUser: userSelActive(), range: api.playbackRange };   // что вернуть после шага
+  clearTimeout(stepTimer);
   stepping = true;
-  api.metronomeVolume = 0; api.countInVolume = 0;   // на шаге без щелчка и предтакта
+  stepBeat = item.beat;
+  api.metronomeVolume = 0; api.countInVolume = 0; api.isLooping = false;   // на шаге без щелчка, предтакта и повтора
+  api.playbackRange = { startTick: tick, endTick: tick + item.beat.playbackDuration };   // ровно одна нота: alphaTab сам остановится в её конце
+  api.tickPosition = tick;
   api.play();
   showNotes([item.beat]);
-  const ms = Math.min(1500, Math.max(120, 0.75 * item.beat.playbackDuration / 960 * 60000 / (baseTempo * api.playbackSpeed)));   // обрываем до начала следующей ноты
-  stepTimer = setTimeout(() => {
-    stepHold = tick;
-    api.pause();
-    api.tickPosition = tick;
-    stepping = false;
-    applyAudio();
-    setTimeout(() => { if (stepHold === tick) { api.tickPosition = tick; stepHold = null; } }, 150);   // запоздалое событие позиции не должно сдвинуть курсор
-  }, ms);
+  stepTimer = setTimeout(endStep, item.beat.playbackDuration / 960 * 60000 / (baseTempo * api.playbackSpeed) + 500);   // запасной выход, если конец ноты не пришёл
+}
+function endStep() {
+  if (!stepping) return;
+  clearTimeout(stepTimer);
+  stepping = false;
+  const e = exercises[current], sv = stepSaved, t = stepTick;
+  if (sv && sv.wasUser) api.playbackRange = sv.range;   // выделение мышью сохраняем
+  else setRange(st.repeat && st.repMode === "bar" ? barAt(t, e) : exRange(e), false);
+  api.tickPosition = t;   // курсор стоит на сыгранной ноте
+  api.isLooping = st.repeat;
+  applyAudio();
+  showNotes(stepBeat ? [stepBeat] : []);
 }
 function stepNote(dir) {
   if (!ready || !exercises.length) return;

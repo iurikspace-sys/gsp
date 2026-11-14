@@ -456,21 +456,26 @@ api.playerStateChanged.on(e => {
   if (playing && !stepping && openCat && exercises[current]) { pushHistory(openCat, openCh, exercises[current].name, boxes.length > 1 ? curBox : undefined); buildHistory(); }
 });
 
+let playStarting = false;
 function startPlay() {
+  if (playStarting) return;
   const wasStep = stepping;
   if (wasStep) { api.pause(); endStep(); }   // Play во время шага: возвращаем диапазон и играем с этой ноты
-  restoreAfterStep();
+  let moved = restoreAfterStep();
   if (!ready || (playing && !wasStep) || broken) return;
   if (!paused && !userSelActive() && exercises.length) {
     const e = exercises[current];
     if (st.repeat && st.repMode === "bar") {
       let t = api.tickPosition;
       if (t < e.startTick || t >= e.endTick) t = e.startTick;
-      setRange(barAt(t, e), false);   // такт, где нажали Play
-      api.tickPosition = t;           // играем с выбранной ноты, а не с начала такта
-    } else if (!sameRange(api.playbackRange, exRange(e))) setRange(exRange(e), true);
+      const r = barAt(t, e);   // такт, где нажали Play; диапазон не трогаем, если он уже тот же
+      if (!sameRange(api.playbackRange, r)) { setRange(r, false); moved = true; }
+      if (api.tickPosition !== t) { api.tickPosition = t; moved = true; }   // играем с выбранной ноты, а не с начала такта
+    } else if (!sameRange(api.playbackRange, exRange(e))) { setRange(exRange(e), true); moved = true; }
   }
-  api.play();
+  // сразу после смены диапазона и позиции play() теряет позицию (тишина с начала такта до курсора): даём плееру применить их
+  if (moved) { playStarting = true; setTimeout(() => { playStarting = false; api.play(); }, 100); }
+  else api.play();
 }
 $("#play").onclick = startPlay;
 $("#pause").onclick = () => api.pause();
@@ -526,13 +531,14 @@ function endStep() {
   applyAudio();
   showNotes(stepBeat ? [stepBeat] : []);
 }
-function restoreAfterStep() {   // вернуть прежний диапазон перед Play / Стоп / сменой повтора
-  if (!stepPending) return;
+function restoreAfterStep() {   // вернуть прежний диапазон перед Play / Стоп / сменой повтора; true — если что-то меняли
+  if (!stepPending) return false;
   stepPending = false;
   const e = exercises[current], sv = stepSaved, t = stepTick;
   if (sv && sv.wasUser) api.playbackRange = sv.range;   // выделение мышью сохраняем
   else setRange(st.repeat && st.repMode === "bar" ? barAt(t, e) : exRange(e), false);
   api.tickPosition = t;
+  return true;
 }
 function stepNote(dir) {
   if (!ready || !exercises.length) return;

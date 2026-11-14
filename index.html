@@ -219,7 +219,7 @@ st.view = VIEW_PROFILE[st.view] ? st.view : "both";
 let baseTempo = 75;   // темп, записанный в файле упражнений
 let halfSpeed = false;   // Shift+Пробел: этот запуск идёт на 50% темпа
 let beatList = [];       // ноты главы: { tick, beat } — для шагов стрелками
-let stepping = false, stepTimer = 0, stepTick = null;   // идёт шаг стрелкой: не считать его запуском воспроизведения
+let stepping = false, stepTimer = 0, stepTick = null, stepHold = null;   // stepHold: куда вернуть курсор после паузы шага   // идёт шаг стрелкой: не считать его запуском воспроизведения
 
 function applyAudio() {
   if (!ready) return;
@@ -446,6 +446,7 @@ let paused = false;   // пауза посреди воспроизведени�
 api.playerStateChanged.on(e => {
   playing = e.state === 1;
   paused = e.state === 0 && !e.stopped;
+  if (e.state === 0 && stepHold !== null) { api.tickPosition = stepHold; stepHold = null; }   // пауза шага: курсор остаётся на сыгранной ноте
   if (e.state === 0 && e.stopped && halfSpeed) { halfSpeed = false; applyAudio(); }   // запуск на 50% закончился
   updateTransport();
   // Play нажат: упражнение попадает в историю вкладки
@@ -495,8 +496,15 @@ function stepTo(tick, item) {
   api.metronomeVolume = 0; api.countInVolume = 0;   // на шаге без щелчка и предтакта
   api.play();
   showNotes([item.beat]);
-  const ms = Math.min(1500, Math.max(150, item.beat.playbackDuration / 960 * 60000 / (baseTempo * api.playbackSpeed)));
-  stepTimer = setTimeout(() => { api.pause(); api.tickPosition = tick; stepping = false; applyAudio(); }, ms);
+  const ms = Math.min(1500, Math.max(120, 0.75 * item.beat.playbackDuration / 960 * 60000 / (baseTempo * api.playbackSpeed)));   // обрываем до начала следующей ноты
+  stepTimer = setTimeout(() => {
+    stepHold = tick;
+    api.pause();
+    api.tickPosition = tick;
+    stepping = false;
+    applyAudio();
+    setTimeout(() => { if (stepHold === tick) { api.tickPosition = tick; stepHold = null; } }, 150);   // запоздалое событие позиции не должно сдвинуть курсор
+  }, ms);
 }
 function stepNote(dir) {
   if (!ready || !exercises.length) return;

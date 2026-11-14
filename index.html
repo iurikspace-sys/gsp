@@ -219,7 +219,7 @@ st.view = VIEW_PROFILE[st.view] ? st.view : "both";
 let baseTempo = 75;   // темп, записанный в файле упражнений
 let halfSpeed = false;   // Shift+Пробел: этот запуск идёт на 50% темпа
 let beatList = [];       // ноты главы: { tick, beat } — для шагов стрелками
-let stepping = false, stepTimer = 0, stepTick = null, stepSaved = null, stepBeat = null;   // шаг стрелкой: играем диапазон из одной ноты, потом возвращаем прежний
+let stepping = false, stepPending = false, stepTimer = 0, stepTick = null, stepSaved = null, stepBeat = null;   // stepPending: после шага диапазон остаётся из одной ноты, прежний вернём при Play/Стоп/клике   // шаг стрелкой: играем диапазон из одной ноты, потом возвращаем прежний
 
 function applyAudio() {
   if (!ready) return;
@@ -370,13 +370,14 @@ let barRanges = [];    // такты главы: { startTick, endTick }
 const exRange = e => ({ startTick: e.startTick, endTick: e.endTick });
 const sameRange = (a, b) => !!a && !!b && a.startTick === b.startTick && a.endTick === b.endTick;
 function setRange(r, keepTick) {
+  stepPending = false;
   const t = api.tickPosition;
   ourRange = r;
   api.playbackRange = r;   // alphaTab ставит курсор в начало диапазона
   if (keepTick) api.tickPosition = Math.min(Math.max(t, r.startTick), r.endTick - 1);
   markRange(false);
 }
-const userSelActive = () => { const r = api.playbackRange; return !!r && !sameRange(r, ourRange); };
+const userSelActive = () => { const r = api.playbackRange; return !stepPending && !!r && !sameRange(r, ourRange); };
 function barAt(tick, ex) {
   const inEx = barRanges.filter(b => b.startTick >= ex.startTick && b.endTick <= ex.endTick);
   return inEx.find(b => tick >= b.startTick && tick < b.endTick) || inEx[0] || exRange(ex);
@@ -401,8 +402,8 @@ if (api.playbackRangeChanged) api.playbackRangeChanged.on(e => {
 });
 // простой клик по нотам: alphaTab сбрасывает диапазон (играло бы до конца главы) — возвращаем наш, курсор остаётся где кликнули
 if (api.beatMouseUp) api.beatMouseUp.on(() => {
-  const wasStep = stepping;
-  if (wasStep) { stepping = false; clearTimeout(stepTimer); api.isLooping = st.repeat; applyAudio(); }
+  const wasStep = stepping || stepPending;
+  if (wasStep) { stepping = false; stepPending = false; clearTimeout(stepTimer); api.isLooping = st.repeat; applyAudio(); }
   if (!ready || !exercises.length || (api.playbackRange && !wasStep)) return;
   const e = exercises[current];
   let t = api.tickPosition;
@@ -458,6 +459,7 @@ api.playerStateChanged.on(e => {
 function startPlay() {
   const wasStep = stepping;
   if (wasStep) { api.pause(); endStep(); }   // Play во время шага: возвращаем диапазон и играем с этой ноты
+  restoreAfterStep();
   if (!ready || (playing && !wasStep) || broken) return;
   if (!paused && !userSelActive() && exercises.length) {
     const e = exercises[current];
@@ -465,13 +467,20 @@ function startPlay() {
       let t = api.tickPosition;
       if (t < e.startTick || t >= e.endTick) t = e.startTick;
       setRange(barAt(t, e), false);   // такт, где нажали Play
+      api.tickPosition = t;           // играем с выбранной ноты, а не с начала такта
     } else if (!sameRange(api.playbackRange, exRange(e))) setRange(exRange(e), true);
   }
   api.play();
 }
 $("#play").onclick = startPlay;
 $("#pause").onclick = () => api.pause();
-$("#stop").onclick = () => { if (stepping) endStep(); api.stop(); showNotes([]); applyAudio(); };
+$("#stop").onclick = () => {
+  const afterStep = stepping || stepPending;
+  if (stepping) endStep();
+  restoreAfterStep();
+  api.stop(); showNotes([]); applyAudio();
+  if (afterStep && api.playbackRange) api.tickPosition = api.playbackRange.startTick;   // курсор в начало диапазона
+};
 // пробел: старт, повторный пробел — стоп (курсор в начало); в полях ввода текста не срабатывает
 const isTyping = t => !!t && (t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable ||
   (t.tagName === "INPUT" && /^(text|number|search|email|password)$/.test(t.type)));
@@ -496,7 +505,7 @@ function stepTo(tick, item) {
     api.tickPosition = tick;
     return;
   }
-  if (!stepping) stepSaved = { wasUser: userSelActive(), range: api.playbackRange };   // что вернуть после шага
+  if (!stepping && !stepPending) stepSaved = { wasUser: userSelActive(), range: api.playbackRange };   // что вернуть после шага
   clearTimeout(stepTimer);
   stepping = true;
   stepBeat = item.beat;
@@ -511,18 +520,24 @@ function endStep() {
   if (!stepping) return;
   clearTimeout(stepTimer);
   stepping = false;
-  const e = exercises[current], sv = stepSaved, t = stepTick;
-  if (sv && sv.wasUser) api.playbackRange = sv.range;   // выделение мышью сохраняем
-  else setRange(st.repeat && st.repMode === "bar" ? barAt(t, e) : exRange(e), false);
-  api.tickPosition = t;   // курсор стоит на сыгранной ноте
+  stepPending = true;   // диапазон пока остаётся из одной ноты: курсор не дёргаем
+  api.tickPosition = stepTick;
   api.isLooping = st.repeat;
   applyAudio();
   showNotes(stepBeat ? [stepBeat] : []);
 }
+function restoreAfterStep() {   // вернуть прежний диапазон перед Play / Стоп / сменой повтора
+  if (!stepPending) return;
+  stepPending = false;
+  const e = exercises[current], sv = stepSaved, t = stepTick;
+  if (sv && sv.wasUser) api.playbackRange = sv.range;   // выделение мышью сохраняем
+  else setRange(st.repeat && st.repMode === "bar" ? barAt(t, e) : exRange(e), false);
+  api.tickPosition = t;
+}
 function stepNote(dir) {
   if (!ready || !exercises.length) return;
   if (playing) api.pause();
-  const e = exercises[current], cur = stepping && stepTick !== null ? stepTick : api.tickPosition;
+  const e = exercises[current], cur = (stepping || stepPending) && stepTick !== null ? stepTick : api.tickPosition;
   const list = beatList.filter(b => b.tick >= e.startTick && b.tick < e.endTick);
   const it = dir > 0 ? list.find(b => b.tick > cur + 1) : [...list].reverse().find(b => b.tick < cur - 1);
   if (it) stepTo(it.tick, it);
@@ -530,7 +545,7 @@ function stepNote(dir) {
 function stepBar(dir) {
   if (!ready || !exercises.length) return;
   if (playing) api.pause();
-  const e = exercises[current], cur = stepping && stepTick !== null ? stepTick : api.tickPosition;
+  const e = exercises[current], cur = (stepping || stepPending) && stepTick !== null ? stepTick : api.tickPosition;
   const bars = barRanges.filter(b => b.startTick >= e.startTick && b.endTick <= e.endTick);
   let tgt;
   if (dir > 0) tgt = bars.find(b => b.startTick > cur + 1);
@@ -549,6 +564,7 @@ document.addEventListener("keydown", e => {
   if (e.shiftKey) stepBar(dir); else stepNote(dir);
 });
 function refreshRange() {
+  restoreAfterStep();
   if (!ready || !exercises.length || userSelActive()) return;
   const e = exercises[current];
   if (st.repeat && st.repMode === "bar") { if (playing) setRange(barAt(api.tickPosition, e), true); }

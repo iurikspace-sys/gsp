@@ -408,11 +408,11 @@ if (api.beatMouseUp) api.beatMouseUp.on(() => {
   const e = exercises[current];
   let t = api.tickPosition;
   if (t < e.startTick || t >= e.endTick) t = e.startTick;
-  const wasPlaying = playing;
-  if (wasPlaying) api.pause();   // смена диапазона и позиции на ходу рассинхронизирует курсор: ставим на паузе
+  const wasPlaying = playing, hs = halfSpeed;
+  if (wasPlaying) api.stop();   // полный стоп, а не пауза: после паузы плеер возвращался к звучавшей ноте
   setRange(st.repeat && st.repMode === "bar" ? barAt(t, e) : exRange(e), false);
   api.tickPosition = t;
-  if (wasPlaying) { playStarting = true; setTimeout(() => { playStarting = false; api.play(); }, 100); }   // и продолжаем с кликнутой ноты
+  if (wasPlaying) { playStarting = true; setTimeout(() => { playStarting = false; halfSpeed = hs; applyAudio(); api.play(); }, 100); }   // и продолжаем с кликнутой ноты
 });
 
 function select(i) {

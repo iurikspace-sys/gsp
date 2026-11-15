@@ -220,6 +220,7 @@ let baseTempo = 75;   // темп, записанный в файле упраж
 let halfSpeed = false;   // Shift+Пробел: этот запуск идёт на 50% темпа
 let beatList = [];       // ноты главы: { tick, beat } — для шагов стрелками
 const cursorAnim = on => { try { api.settings.player.enableAnimatedBeatCursor = on; } catch (e) {} };   // плавное движение курсора; на шагах стрелками выключаем
+let stepEnd = 0, stepFrozen = null, stepObs = null;   // хвост звука ноты шага уводит курсор вперёд: замораживаем его на ноте шага
 let stepping = false, stepPending = false, stepTimer = 0, stepTick = null, stepSaved = null, stepBeat = null;   // stepPending: после шага диапазон остаётся из одной ноты, прежний вернём при Play/Стоп/клике   // шаг стрелкой: играем диапазон из одной ноты, потом возвращаем прежний
 
 function applyAudio() {
@@ -453,6 +454,19 @@ api.renderFinished.on(() => {
   if (!ready) status("нотация отрисована");
   if (scrollAfterRender) { scrollAfterRender = false; scrollToExercise(current); }   // после смены вида возвращаемся к выбранному упражнению
 });
+api.playerPositionChanged.on(e => {
+  if (!stepping || stepFrozen || e.currentTick < stepEnd) return;
+  const els = Array.from(document.querySelectorAll(".at-cursor-beat, .at-cursor-bar"));
+  stepFrozen = els.map(x => x.style.cssText);
+  if (!stepObs) stepObs = new MutationObserver(() => {
+    if (!stepping || !stepFrozen) return;
+    Array.from(document.querySelectorAll(".at-cursor-beat, .at-cursor-bar")).forEach((x, k) => {
+      if (stepFrozen[k] !== undefined && x.style.cssText !== stepFrozen[k]) x.style.cssText = stepFrozen[k];
+    });
+  });
+  stepObs.disconnect();
+  els.forEach(x => stepObs.observe(x, { attributes: true, attributeFilter: ["style"] }));
+});
 api.activeBeatsChanged.on(e => { if (stepping || stepPending) return; showNotes(e.activeBeats); });   // во время шага гриф показывает только ноту шага
 api.playerFinished.on(() => { if (stepping) { endStep(); return; } showNotes([]); if (halfSpeed && !st.repeat) { halfSpeed = false; applyAudio(); } });   // при повторе это конец круга, а не запуска
 api.error.on(e => { console.error(e); status("ошибка: " + (e.message || e)); });
@@ -510,7 +524,16 @@ document.addEventListener("keydown", e => {
 });
 document.addEventListener("keyup", e => { if (e.code === "Space" && !isTyping(e.target)) e.preventDefault(); });
 // шаги стрелками: звучит одна нота, воспроизведение на паузе, курсор на ней
+function followTick(tick) {   // шаг перешёл в другое упражнение: оно становится текущим
+  const idx = exercises.findIndex(x => tick >= x.startTick && tick < x.endTick);
+  if (idx < 0 || idx === current) return;
+  current = idx;
+  if (openCat) lastSelected[openCat] = { ch: openCh, name: exercises[idx].name };
+  $("#list").querySelectorAll(".ex").forEach((b, k) => b.classList.toggle("active", k === idx));
+  scrollToExercise(idx);
+}
 function stepTo(tick, item) {
+  followTick(tick);
   const e = exercises[current];
   stepTick = tick;
   if (!item) {
@@ -528,6 +551,7 @@ function stepTo(tick, item) {
   cursorAnim(false);   // на шаге курсор стоит на ноте, не «доезжает» до следующей
   api.metronomeVolume = 0; api.countInVolume = 0; api.isLooping = false;   // на шаге без щелчка, предтакта и повтора
   const dur = item.beat.playbackDuration, cut = Math.min(40, Math.floor(dur * 0.2));   // чуть короче ноты: курсор и гриф не доходят до следующей
+  stepEnd = tick + dur - cut; stepFrozen = null;
   api.playbackRange = { startTick: tick, endTick: tick + dur - cut };   // одна нота: alphaTab сам остановится в конце диапазона
   api.tickPosition = tick;
   api.play();
@@ -539,6 +563,7 @@ function endStep() {
   clearTimeout(stepTimer);
   stepping = false;
   stepPending = true;   // диапазон пока остаётся из одной ноты: курсор не дёргаем
+  stepFrozen = null;
   api.tickPosition = stepTick;
   api.isLooping = st.repeat;
   applyAudio();
@@ -556,16 +581,15 @@ function restoreAfterStep() {   // вернуть прежний диапазо�
 function stepNote(dir) {
   if (!ready || !exercises.length) return;
   if (playing) api.pause();
-  const e = exercises[current], cur = (stepping || stepPending) && stepTick !== null ? stepTick : api.tickPosition;
-  const list = beatList.filter(b => b.tick >= e.startTick && b.tick < e.endTick);
-  const it = dir > 0 ? list.find(b => b.tick > cur + 1) : [...list].reverse().find(b => b.tick < cur - 1);
+  const cur = (stepping || stepPending) && stepTick !== null ? stepTick : api.tickPosition;
+  const it = dir > 0 ? beatList.find(b => b.tick > cur + 1) : [...beatList].reverse().find(b => b.tick < cur - 1);
   if (it) stepTo(it.tick, it);
 }
 function stepBar(dir) {
   if (!ready || !exercises.length) return;
   if (playing) api.pause();
-  const e = exercises[current], cur = (stepping || stepPending) && stepTick !== null ? stepTick : api.tickPosition;
-  const bars = barRanges.filter(b => b.startTick >= e.startTick && b.endTick <= e.endTick);
+  const cur = (stepping || stepPending) && stepTick !== null ? stepTick : api.tickPosition;
+  const bars = barRanges;
   let tgt;
   if (dir > 0) tgt = bars.find(b => b.startTick > cur + 1);
   else {

@@ -592,6 +592,28 @@ document.addEventListener("keydown", e => {
   repeatChanged();
 });
 
+// Shift+↑/↓ — предыдущее/следующее упражнение (сначала в начало текущего), Home/End — первое/последнее
+function goExercise(i) {
+  if (!ready || !exercises.length) return;
+  i = Math.max(0, Math.min(exercises.length - 1, i));
+  const wasPlaying = playing, hs = halfSpeed;
+  if (stepping) { clearTimeout(stepTimer); stepping = false; }
+  select(i);
+  if (wasPlaying) { playStarting = true; setTimeout(() => { playStarting = false; halfSpeed = hs; applyAudio(); api.play(); }, 100); }   // игра продолжается с начала нового упражнения
+}
+document.addEventListener("keydown", e => {
+  const nav = (e.code === "ArrowUp" || e.code === "ArrowDown") ? e.shiftKey : (e.code === "Home" || e.code === "End") && !e.shiftKey;
+  if (!nav || e.ctrlKey || e.altKey || e.metaKey || isTyping(e.target)) return;
+  if (e.target && e.target.tagName === "INPUT" && e.target.type === "range") return;
+  if (!ready || !exercises.length) return;
+  e.preventDefault();
+  if (e.code === "Home") return goExercise(0);
+  if (e.code === "End") return goExercise(exercises.length - 1);
+  if (e.code === "ArrowDown") return goExercise(current + 1);
+  const cur = (stepping || stepPending) && stepTick !== null ? stepTick : api.tickPosition;
+  goExercise(cur > exercises[current].startTick + 1 ? current : current - 1);   // сначала в начало текущего, повторно — назад
+});
+
 // ---------- вкладки и главы ----------
 const cap = s => { const t = (s.replace(/^\d+/, "") || s).replace(/([a-zA-Z])(\d+)$/, "$1 $2"); return t.charAt(0).toUpperCase() + t.slice(1); };
    // число в начале имени задаёт порядок и не показывается

@@ -405,8 +405,14 @@ if (api.beatMouseUp) api.beatMouseUp.on(() => {
   const wasStep = stepping || stepPending;
   if (wasStep) { stepping = false; stepPending = false; clearTimeout(stepTimer); api.isLooping = st.repeat; applyAudio(); }
   if (!ready || !exercises.length || (api.playbackRange && !wasStep)) return;
-  const e = exercises[current];
   let t = api.tickPosition;
+  const idx = exercises.findIndex(x => t >= x.startTick && t < x.endTick);
+  if (idx >= 0 && idx !== current) {   // клик в другом упражнении: оно становится текущим (без прокрутки и стопа — их делаем ниже сами)
+    current = idx;
+    if (openCat) lastSelected[openCat] = { ch: openCh, name: exercises[idx].name };
+    $("#list").querySelectorAll(".ex").forEach((b, k) => b.classList.toggle("active", k === idx));
+  }
+  const e = exercises[current];
   if (t < e.startTick || t >= e.endTick) t = e.startTick;
   const wasPlaying = playing, hs = halfSpeed;
   if (wasPlaying) api.stop();   // полный стоп, а не пауза: после паузы плеер возвращался к звучавшей ноте
@@ -446,7 +452,7 @@ api.renderFinished.on(() => {
   if (!ready) status("нотация отрисована");
   if (scrollAfterRender) { scrollAfterRender = false; scrollToExercise(current); }   // после смены вида возвращаемся к выбранному упражнению
 });
-api.activeBeatsChanged.on(e => showNotes(e.activeBeats));
+api.activeBeatsChanged.on(e => { if (stepping || stepPending) return; showNotes(e.activeBeats); });   // во время шага гриф показывает только ноту шага
 api.playerFinished.on(() => { if (stepping) { endStep(); return; } showNotes([]); if (halfSpeed && !st.repeat) { halfSpeed = false; applyAudio(); } });   // при повторе это конец круга, а не запуска
 api.error.on(e => { console.error(e); status("ошибка: " + (e.message || e)); });
 let paused = false;   // пауза посреди воспроизведения: Play продолжает с того же места, диапазон не пересчитываем
@@ -519,7 +525,8 @@ function stepTo(tick, item) {
   stepping = true;
   stepBeat = item.beat;
   api.metronomeVolume = 0; api.countInVolume = 0; api.isLooping = false;   // на шаге без щелчка, предтакта и повтора
-  api.playbackRange = { startTick: tick, endTick: tick + item.beat.playbackDuration };   // ровно одна нота: alphaTab сам остановится в её конце
+  const dur = item.beat.playbackDuration, cut = Math.min(40, Math.floor(dur * 0.2));   // чуть короче ноты: курсор и гриф не доходят до следующей
+  api.playbackRange = { startTick: tick, endTick: tick + dur - cut };   // одна нота: alphaTab сам остановится в конце диапазона
   api.tickPosition = tick;
   api.play();
   showNotes([item.beat]);

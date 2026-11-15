@@ -1,7 +1,8 @@
 {
   "1chromatic": [
-    "chapter01",
-    "chapter02",
-    "chapter03"
+    "chapter01"
+  ],
+  "2pentatonic": [
+    "chapter01"
   ]
 }

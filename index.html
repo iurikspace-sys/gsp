@@ -219,6 +219,7 @@ st.view = VIEW_PROFILE[st.view] ? st.view : "both";
 let baseTempo = 75;   // темп, записанный в файле упражнений
 let halfSpeed = false;   // Shift+Пробел: этот запуск идёт на 50% темпа
 let beatList = [];       // ноты главы: { tick, beat } — для шагов стрелками
+const cursorAnim = on => { try { api.settings.player.enableAnimatedBeatCursor = on; } catch (e) {} };   // плавное движение курсора; на шагах стрелками выключаем
 let stepping = false, stepPending = false, stepTimer = 0, stepTick = null, stepSaved = null, stepBeat = null;   // stepPending: после шага диапазон остаётся из одной ноты, прежний вернём при Play/Стоп/клике   // шаг стрелкой: играем диапазон из одной ноты, потом возвращаем прежний
 
 function applyAudio() {
@@ -370,7 +371,7 @@ let barRanges = [];    // такты главы: { startTick, endTick }
 const exRange = e => ({ startTick: e.startTick, endTick: e.endTick });
 const sameRange = (a, b) => !!a && !!b && a.startTick === b.startTick && a.endTick === b.endTick;
 function setRange(r, keepTick) {
-  stepPending = false;
+  stepPending = false; cursorAnim(true);
   const t = api.tickPosition;
   ourRange = r;
   api.playbackRange = r;   // alphaTab ставит курсор в начало диапазона
@@ -403,7 +404,7 @@ if (api.playbackRangeChanged) api.playbackRangeChanged.on(e => {
 // простой клик по нотам: alphaTab сбрасывает диапазон (играло бы до конца главы) — возвращаем наш, курсор остаётся где кликнули
 if (api.beatMouseUp) api.beatMouseUp.on(() => {
   const wasStep = stepping || stepPending;
-  if (wasStep) { stepping = false; stepPending = false; clearTimeout(stepTimer); api.isLooping = st.repeat; applyAudio(); }
+  if (wasStep) { stepping = false; stepPending = false; clearTimeout(stepTimer); cursorAnim(true); api.isLooping = st.repeat; applyAudio(); }
   if (!ready || !exercises.length || (api.playbackRange && !wasStep)) return;
   let t = api.tickPosition;
   const idx = exercises.findIndex(x => t >= x.startTick && t < x.endTick);
@@ -524,6 +525,7 @@ function stepTo(tick, item) {
   clearTimeout(stepTimer);
   stepping = true;
   stepBeat = item.beat;
+  cursorAnim(false);   // на шаге курсор стоит на ноте, не «доезжает» до следующей
   api.metronomeVolume = 0; api.countInVolume = 0; api.isLooping = false;   // на шаге без щелчка, предтакта и повтора
   const dur = item.beat.playbackDuration, cut = Math.min(40, Math.floor(dur * 0.2));   // чуть короче ноты: курсор и гриф не доходят до следующей
   api.playbackRange = { startTick: tick, endTick: tick + dur - cut };   // одна нота: alphaTab сам остановится в конце диапазона
@@ -544,7 +546,7 @@ function endStep() {
 }
 function restoreAfterStep() {   // вернуть прежний диапазон перед Play / Стоп / сменой повтора; true — если что-то меняли
   if (!stepPending) return false;
-  stepPending = false;
+  stepPending = false; cursorAnim(true);
   const e = exercises[current], sv = stepSaved, t = stepTick;
   if (sv && sv.wasUser) api.playbackRange = sv.range;   // выделение мышью сохраняем
   else setRange(st.repeat && st.repMode === "bar" ? barAt(t, e) : exRange(e), false);

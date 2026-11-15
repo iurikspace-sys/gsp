@@ -583,6 +583,14 @@ function refreshRange() {
 function repeatChanged() { syncPanel(); saveSettings(); refreshRange(); }
 $("#loop").onchange = e => { st.repeat = e.target.checked; repeatChanged(); };
 document.querySelectorAll("#panel button[data-rep]").forEach(b => b.onclick = () => { st.repMode = b.dataset.rep; repeatChanged(); });
+// R — повтор вкл/выкл, Shift+R — режим повтора (упражнение / такт)
+document.addEventListener("keydown", e => {
+  if (e.code !== "KeyR" || e.ctrlKey || e.altKey || e.metaKey || isTyping(e.target)) return;
+  e.preventDefault();
+  if (e.shiftKey) st.repMode = st.repMode === "bar" ? "exercise" : "bar";
+  else st.repeat = !st.repeat;
+  repeatChanged();
+});
 
 // ---------- вкладки и главы ----------
 const cap = s => { const t = (s.replace(/^\d+/, "") || s).replace(/([a-zA-Z])(\d+)$/, "$1 $2"); return t.charAt(0).toUpperCase() + t.slice(1); };

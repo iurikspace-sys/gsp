@@ -287,6 +287,14 @@ $("#metro").onchange = e => { st.metro = e.target.checked; changed(); };
 $("#metroVol").oninput = e => { st.metroVol = clamp(e.target.value, 0, 100, st.metroVol); changed(); };
 $("#countIn").onchange = e => { st.countIn = e.target.checked; changed(); };
 $("#master").oninput = e => { st.master = clamp(e.target.value, 0, 100, st.master); changed(); };
+// «−» и «=»/«+» — темп ±1, с Shift ±5 (по физическим клавишам: работает в любой раскладке)
+document.addEventListener("keydown", e => {
+  const dir = (e.code === "Minus" || e.code === "NumpadSubtract") ? -1 : (e.code === "Equal" || e.code === "NumpadAdd") ? 1 : 0;
+  if (!dir || e.ctrlKey || e.altKey || e.metaKey || isTyping(e.target)) return;
+  e.preventDefault();
+  st.bpm = clamp(st.bpm + dir * (e.shiftKey ? 5 : 1), 40, 240, st.bpm);
+  changed();
+});
 let scrollAfterRender = false;
 function applyView() {
   try {

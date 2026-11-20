@@ -38,7 +38,9 @@
   #leftside .catTitle { font-size: 15px; font-weight: 700; margin: 0 0 8px; }
   #leftside .chap { font-weight: 600; background: #f3f3f3; }
   #leftside .chap.open { background: #fff; border-color: #7aa7f7; }
-  #leftside .ex { width: calc(100% - 16px); margin-left: 16px; }
+  #leftside .exRow { display: flex; gap: 3px; margin: 0 0 4px 16px; }
+  #leftside .exRow .ex { flex: 1; min-width: 0; width: auto; margin: 0; }
+  #leftside .exRow .part { flex: none; width: 26px; margin: 0; padding: 8px 0; text-align: center; font-size: 12px; color: #555; }
   #leftside .hi { font-size: 13px; padding: 5px 8px; }
   #panel .cap { font-size: 12px; color: #666; margin-top: 2px; }
   #panel .tr button { font-size: 18px; padding: 4px 14px; }
@@ -109,7 +111,7 @@
         <button id="play" title="Play" disabled>▶</button><button id="pause" title="Pause" disabled>❚❚</button><button id="stop" title="Stop" disabled>■</button>
       </div>
       <label style="margin-top:8px"><input type="checkbox" id="loop" checked> Повтор</label>
-      <div class="row reps"><button data-rep="exercise" title="Повторять всё упражнение">Упражнение</button><button data-rep="bar" title="Повторять такт, где нажали Play">Такт</button></div>
+      <div class="row reps"><button data-rep="exercise" title="Повторять часть упражнения (вверх или вниз)">Часть</button><button data-rep="bar" title="Повторять такт, где нажали Play">Такт</button></div>
     </section>
       <section>
       <h3>Темп</h3>
@@ -325,6 +327,12 @@ api.scoreLoaded.on(score => {
   barRanges = bars.map(mb => ({ startTick: mb.start, endTick: mb.start + mb.calculateDuration() }));
   const last = bars[bars.length - 1], end = last.start + last.calculateDuration();
   exercises.forEach((e, i) => e.endTick = i + 1 < exercises.length ? exercises[i + 1].startTick : end);
+  exercises.forEach(e => {   // середина упражнения по числу тактов: здесь начинается часть 2 (нисходящая)
+    const bs = barRanges.map((b, k) => ({ startTick: b.startTick, endTick: b.endTick, k })).filter(b => b.startTick >= e.startTick && b.endTick <= e.endTick);
+    const h = Math.ceil(bs.length / 2);
+    e.mid = bs.length >= 2 ? bs[h].startTick : null;
+    e.midBar = bs.length >= 2 ? bs[h].k : null;
+  });
   const idx = exercises.findIndex(e => e.name === pendingName);   // упражнение, выбранное в этой вкладке последним
   current = idx >= 0 ? idx : 0;
   buildList();
@@ -359,11 +367,22 @@ function buildList() {
     nav.appendChild(f);
     if (expanded) {
       exercises.forEach((e, i) => {
+        const row = document.createElement("div");
+        row.className = "exRow";
         const b = document.createElement("button");
         b.className = "ex" + (i === current ? " active" : "");
         b.textContent = e.name;
         b.onclick = () => select(i);
-        nav.appendChild(b);
+        row.appendChild(b);
+        if (e.mid != null) [["1", "Часть 1 (вверх)"], ["2", "Часть 2 (вниз)"]].forEach(([n, tip], p) => {
+          const pb = document.createElement("button");
+          pb.className = "part";
+          pb.textContent = n;
+          pb.title = tip;
+          pb.onclick = () => goPart(i, p);
+          row.appendChild(pb);
+        });
+        nav.appendChild(row);
       });
     }
   });
@@ -412,6 +431,9 @@ function openExercise(c, ch, name, box) {
 let ourRange = null;   // диапазон, который выставили мы; любой другой — выделение мышью
 let barRanges = [];    // такты главы: { startTick, endTick }
 const exRange = e => ({ startTick: e.startTick, endTick: e.endTick });
+// часть упражнения, в которой лежит тик: часть 1 (вверх) или часть 2 (вниз); без середины — всё упражнение
+const partRange = (e, t) => (e.mid == null) ? exRange(e) : (t < e.mid ? { startTick: e.startTick, endTick: e.mid } : { startTick: e.mid, endTick: e.endTick });
+const tickIn = (e, t) => (t >= e.startTick && t < e.endTick) ? t : e.startTick;
 const sameRange = (a, b) => !!a && !!b && a.startTick === b.startTick && a.endTick === b.endTick;
 function setRange(r, keepTick) {
   stepPending = false; cursorAnim(true);
@@ -429,7 +451,7 @@ function barAt(tick, ex) {
 function applyRange() {
   if (!ready || !exercises.length) return;
   const e = exercises[current];
-  setRange(exRange(e), false);
+  setRange(partRange(e, e.startTick), false);
   api.tickPosition = e.startTick;
 }
 // какой диапазон сейчас: наш или выделенный мышью; от этого зависит, что подсвечивать
@@ -460,7 +482,7 @@ if (api.beatMouseUp) api.beatMouseUp.on(() => {
   if (t < e.startTick || t >= e.endTick) t = e.startTick;
   const wasPlaying = playing, hs = halfSpeed;
   if (wasPlaying) api.stop();   // полный стоп, а не пауза: после паузы плеер возвращался к звучавшей ноте
-  setRange(st.repeat && st.repMode === "bar" ? barAt(t, e) : exRange(e), false);
+  setRange(st.repeat && st.repMode === "bar" ? barAt(t, e) : partRange(e, t), false);
   api.tickPosition = t;
   if (wasPlaying) { playStarting = true; setTimeout(() => { playStarting = false; halfSpeed = hs; applyAudio(); api.play(); }, 100); }   // и продолжаем с кликнутой ноты
 });
@@ -475,9 +497,10 @@ function select(i) {
   scrollToExercise(i);
 }
 
-function scrollToExercise(i) {
+function scrollToExercise(i) { scrollToBarIndex(exercises[i].bar); }
+function scrollToBarIndex(bi) {
   try {
-    const b = api.boundsLookup.findMasterBarByIndex(exercises[i].bar);
+    const b = api.boundsLookup.findMasterBarByIndex(bi);
     if (!b) return;
     $("#atwrap").scrollTo({ top: Math.max(0, $("#at").offsetTop + b.realBounds.y - 8), behavior: "smooth" });
   } catch (e) { /* нотация ещё не отрисована */ }
@@ -511,7 +534,15 @@ api.playerPositionChanged.on(e => {
   els.forEach(x => stepObs.observe(x, { attributes: true, attributeFilter: ["style"] }));
 });
 api.activeBeatsChanged.on(e => { if (stepping || stepPending) return; showNotes(e.activeBeats); });   // во время шага гриф показывает только ноту шага
-api.playerFinished.on(() => { if (stepping) { endStep(); return; } showNotes([]); if (halfSpeed && !st.repeat) { halfSpeed = false; applyAudio(); } });   // при повторе это конец круга, а не запуска
+// без повтора часть доигрывает и останавливается; курсор встаёт в начало следующей части (после части 2 — в начало части 1)
+function advancePart() {
+  const e = exercises[current];
+  if (!ready || !e || userSelActive()) return;
+  const next = (e.mid != null && ourRange && ourRange.startTick === e.startTick) ? e.mid : e.startTick;
+  setRange(partRange(e, next), false);
+  api.tickPosition = next;
+}
+api.playerFinished.on(() => { if (stepping) { endStep(); return; } showNotes([]); if (halfSpeed && !st.repeat) { halfSpeed = false; applyAudio(); } if (!st.repeat) advancePart(); });   // при повторе это конец круга, а не запуска
 api.error.on(e => { console.error(e); status("ошибка: " + (e.message || e)); });
 let paused = false;   // пауза посреди воспроизведения: Play продолжает с того же места, диапазон не пересчитываем
 api.playerStateChanged.on(e => {
@@ -539,7 +570,10 @@ function startPlay() {
       const r = barAt(t, e);   // такт, где нажали Play; диапазон не трогаем, если он уже тот же
       if (!sameRange(api.playbackRange, r)) { setRange(r, false); moved = true; }
       if (api.tickPosition !== t) { api.tickPosition = t; moved = true; }   // играем с выбранной ноты, а не с начала такта
-    } else if (!sameRange(api.playbackRange, exRange(e))) { setRange(exRange(e), true); moved = true; }
+    } else {
+      const pr = partRange(e, tickIn(e, api.tickPosition));
+      if (!sameRange(api.playbackRange, pr)) { setRange(pr, true); moved = true; }
+    }
   }
   // сразу после смены диапазона и позиции play() теряет позицию (тишина с начала такта до курсора): даём плееру применить их
   if (moved) { playStarting = true; setTimeout(() => { playStarting = false; if (hadStep) { halfSpeed = hs; applyAudio(); } api.play(); }, 100); }
@@ -625,7 +659,7 @@ function restoreAfterStep() {   // вернуть прежний диапазо�
   stepPending = false; cursorAnim(true);
   const e = exercises[current], sv = stepSaved, t = stepTick;
   if (sv && sv.wasUser) api.playbackRange = sv.range;   // выделение мышью сохраняем
-  else setRange(st.repeat && st.repMode === "bar" ? barAt(t, e) : exRange(e), false);
+  else setRange(st.repeat && st.repMode === "bar" ? barAt(t, e) : partRange(e, t), false);
   api.tickPosition = t;
   return true;
 }
@@ -662,7 +696,7 @@ function refreshRange() {
   if (!ready || !exercises.length || userSelActive()) return;
   const e = exercises[current];
   if (st.repeat && st.repMode === "bar") { if (playing) setRange(barAt(api.tickPosition, e), true); }
-  else if (!sameRange(api.playbackRange, exRange(e))) setRange(exRange(e), true);
+  else { const pr = partRange(e, tickIn(e, api.tickPosition)); if (!sameRange(api.playbackRange, pr)) setRange(pr, true); }
 }
 function repeatChanged() { syncPanel(); saveSettings(); refreshRange(); }
 $("#loop").onchange = e => { st.repeat = e.target.checked; repeatChanged(); };
@@ -676,6 +710,16 @@ document.addEventListener("keydown", e => {
   repeatChanged();
 });
 
+// кнопки «1»/«2» рядом с упражнением в списке: курсор в начало части 1 (вверх) или части 2 (вниз)
+function goPart(i, p) {
+  if (!ready || !exercises.length) return;
+  const wasPlaying = playing, hs = halfSpeed;
+  if (stepping) { clearTimeout(stepTimer); stepping = false; }
+  select(i);
+  const e = exercises[i];
+  if (p === 1 && e.mid != null) { setRange(partRange(e, e.mid), false); api.tickPosition = e.mid; scrollToBarIndex(e.midBar); }
+  if (wasPlaying) { playStarting = true; setTimeout(() => { playStarting = false; halfSpeed = hs; applyAudio(); api.play(); }, 100); }
+}
 // Shift+↑/↓ — предыдущее/следующее упражнение (сначала в начало текущего), Home/End — первое/последнее
 function goExercise(i) {
   if (!ready || !exercises.length) return;

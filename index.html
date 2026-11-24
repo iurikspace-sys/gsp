@@ -2,84 +2,898 @@
 <html lang="ru">
 <head>
 <meta charset="utf-8">
-<title>Тест: неполный такт (\ac) в alphaTab 1.6.3</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Seq Trainer v8</title>
 <style>
-  body { font-family: sans-serif; margin: 16px; background: #fafafa; color: #222; }
-  button, label { margin-right: 10px; font-size: 15px; }
-  #at { background: #fff; border: 1px solid #ccc; margin: 12px 0; }
-  pre { background: #f0f0f0; padding: 8px; font-size: 13px; white-space: pre-wrap; }
+  :root { --ui: 0.8; --lw: 176px; --rw: 188px; }   /* масштаб интерфейса (кнопки, гриф, список); 1 = крупно, 0.5 = вдвое меньше */
+  html, body { height: 100%; }
+  body { font-family: system-ui, sans-serif; margin: 0; background: #fafafa; color: #222; display: flex; flex-direction: column; overflow: hidden; }
+  [hidden] { display: none !important; }
+  #top { zoom: var(--ui); flex: none; position: relative; z-index: 2000; display: flex; align-items: center; gap: 16px; padding: 5px 12px; background: #fff; border-bottom: 1px solid #ddd; }
+  #logo { font-weight: 700; font-size: 16px; white-space: nowrap; }
+  #tabs { display: flex; flex-wrap: wrap; gap: 6px; }
+  #tabs button { margin: 0; padding: 4px 18px; background: #fff; border: 1px solid #ddd; border-radius: 6px; }
+  #tabs button.active { background: #e8f0fe; border-color: #7aa7f7; font-weight: 600; }
+  #crumbRow { flex: none; display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 1px 2px 3px; }
+  #crumbs { font-size: 13px; color: #666; }
+  #crumbs b { color: #222; }
+  button { font-size: 15px; padding: 6px 16px; margin-right: 6px; cursor: pointer; }
+  button:disabled { cursor: default; opacity: .5; }
+  label { font-size: 14px; margin-left: 8px; }
+  #status { font-size: 12px; color: #888; }
+  #layout { flex: 1; min-height: 0; display: grid; grid-template-columns: 22px auto minmax(0, 1fr) auto 22px; grid-template-rows: minmax(0, 1fr); }
+  #stripL { grid-column: 1; } #leftside { grid-column: 2; } #center { grid-column: 3; } #rightside { grid-column: 4; } #stripR { grid-column: 5; }
+  .strip { background: #e6e6e6; display: flex; flex-direction: column; align-items: stretch; gap: 2px; padding-top: 4px; }
+  #stripL { border-right: 1px solid #ccc; } #stripR { border-left: 1px solid #ccc; }
+  .strip button { margin: 0; padding: 7px 0; border: 0; border-radius: 0; background: transparent; color: #666; font-size: 13px; font-weight: 700; }
+  .strip button:hover { background: #d8d8d8; }
+  .strip button.on { background: #fff; color: #222; }
+  .side { min-height: 0; display: flex; flex-direction: column; background: #fafafa; }
+  #leftside { width: var(--lw); border-right: 1px solid #ddd; } #rightside { width: var(--rw); border-left: 1px solid #ddd; }
+  .sideHead { flex: none; font-size: 13px; font-weight: 700; padding: 5px 8px; background: #fff; border-bottom: 1px solid #ddd; }
+  #center { min-width: 0; min-height: 0; display: flex; flex-direction: column; padding: 0 8px; }
+  #list, #histPane { zoom: var(--ui); flex: 1; min-height: 0; overflow-y: auto; padding: 6px 6px; }
+  #leftside button { display: block; width: 100%; margin: 0 0 4px; text-align: left; font-size: 14px; padding: 8px 10px; background: #fff; border: 1px solid #ddd; border-radius: 6px; }
+  #leftside button.active { background: #e8f0fe; border-color: #7aa7f7; font-weight: 600; }
+  #leftside .catTitle { font-size: 15px; font-weight: 700; margin: 0 0 8px; }
+  #leftside .chap { font-weight: 600; background: #f3f3f3; }
+  #leftside .chap.open { background: #fff; border-color: #7aa7f7; }
+  #leftside .exRow { display: flex; gap: 3px; margin: 0 0 4px 16px; }
+  #leftside .exRow .ex { flex: 1; min-width: 0; width: auto; margin: 0; }
+  #leftside .hi { font-size: 13px; padding: 5px 8px; }
+  #panel .cap { font-size: 12px; color: #666; margin-top: 2px; }
+  #panel .tr button { font-size: 18px; padding: 4px 14px; }
+  #panel .views button { padding: 6px 10px; }
+  #panel .views button svg { width: 32px; height: 28px; display: block; }
+  #panel .views button.on { background: #e8f0fe; border-color: #7aa7f7; font-weight: 600; }
+  #panel .reps button { padding: 5px 8px; font-size: 13px; }
+  #panel .reps button.on { background: #e8f0fe; border-color: #7aa7f7; font-weight: 600; }
+  #panel .reps.off button { opacity: .5; }
+  #atwrap { position: relative; flex: 1; min-height: 0; overflow-y: auto; padding: 2px 0; isolation: isolate; contain: paint; }
+  #panel { zoom: var(--ui); flex: 1; min-height: 0; overflow-y: auto; padding: 6px 6px; }
+  #panel section { background: #fff; border: 1px solid #ddd; border-radius: 6px; padding: 10px; margin-bottom: 8px; }
+  #panel h3 { margin: 0 0 6px; font-size: 14px; color: #666; font-weight: 600; }
+  #panel label { margin-left: 0; display: block; margin-bottom: 6px; }
+  #panel input[type=range] { width: 100%; margin: 4px 0 0; }
+  #panel .row button { margin: 4px 4px 0 0; padding: 4px 10px; font-size: 14px; }
+  #bpm { font-size: 44px; font-weight: 600; line-height: 1; }
+  #bpmUnit { font-size: 12px; color: #666; margin-bottom: 4px; }
+  /* курсор alphaTab: зелёный */
+  /* курсор alphaTab: играющий такт и выделение светло-бежевые; курсор-линия зелёная */
+  .at-cursor-bar { background: rgba(245, 222, 179, .55); }
+  .at-cursor-beat { background: #2ea043; width: 3px; clip-path: inset(0 1px 0 0); }   /* видимая ширина 2px: правый пиксель обрезан, размеры и движение курсора не трогаем */
+  /* слои: заливка такта и выделения под нотами, линия курсора поверх нот */
+  #at .at-cursors { z-index: auto !important; }
+  #at .at-surface { position: relative; z-index: 1; }
+  #at .at-cursor-bar, #at .at-selection { z-index: 0 !important; }
+  #at .at-cursor-beat { z-index: 2 !important; }
+  .at-selection div { background: rgba(245, 222, 179, .55); }
+  #atwrap.exrange .at-selection div { background: transparent; }   /* диапазон упражнения не показываем как выделение */
+  #atwrap.usersel .at-cursor-bar { background: transparent; }       /* при выделении мышью подсветка такта не накладывается */
+  .at-highlight * { fill: #2ea043; stroke: #2ea043; }
+  #fretboard { flex: none; margin-top: 2px; }
+  /* ряд боксов: мини-схемы (струны и точки), выбранный подсвечен */
+  #boxes { flex: none; display: flex; flex-wrap: wrap; gap: 6px; margin: 3px 0 3px; }
+  #boxes[hidden] { display: none; }
+  #boxes button { margin: 0; padding: 2px 4px 1px; background: #fff; border: 1px solid #ddd; border-radius: 5px; font-size: 11px; line-height: 1.2; color: #666; }
+  #boxes button svg { display: block; }
+  #boxes button .d { fill: #9a9a9a; }
+  #boxes button.on { background: #e8f0fe; border-color: #7aa7f7; color: #222; font-weight: 600; }
+  #boxes button.on .d { fill: #8b0000; }
 </style>
-<script src="https://cdn.jsdelivr.net/npm/@coderline/alphatab@1.6.3/dist/alphaTab.min.js"></script>
 </head>
 <body>
-<p>
-  Exercise 01 и 02: последний такт неполный, помечен <b>\ac</b> (без пауз). Exercise 03: контроль, последний такт добит паузами, как сейчас.
-</p>
-<p>
-  <button id="play">Play / Pause</button>
-  <button id="stop">Stop</button>
-  <label><input type="checkbox" id="met" checked> метроном</label>
-</p>
-<div id="at"></div>
-<b>Такты (скопируй сюда и пришли мне):</b>
-<pre id="info">загрузка…</pre>
-<b>События воспроизведения:</b>
-<pre id="log"></pre>
+<div id="top">
+  <div id="logo">Seq Trainer</div>
+  <div id="tabs"></div>
+</div>
+<div id="layout">
+  <div class="strip" id="stripL"><button data-pane="C" class="on" title="Contents">C</button><button data-pane="H" title="History">H</button></div>
+  <aside id="leftside" class="side">
+    <div class="sideHead" id="leftHead">Contents</div>
+    <nav id="list"><div id="tree"></div></nav>
+    <div id="histPane" hidden><div id="hist"></div></div>
+  </aside>
+  <main id="center">
+    <div id="fretboard"></div>
+    <div id="boxes" hidden></div>
+    <div id="crumbRow"><div id="crumbs">…</div><span id="status">загрузка…</span></div>
+    <div id="atwrap"><div id="at"></div></div>
+  </main>
+  <aside id="rightside" class="side">
+    <div class="sideHead" id="rightHead">Metronome</div>
+    <div id="panel">
+      <div id="paneM">
+      <section>
+      <h3>Воспроизведение</h3>
+      <div class="row tr">
+        <button id="play" title="Play" disabled>▶</button><button id="pause" title="Pause" disabled>❚❚</button><button id="stop" title="Stop" disabled>■</button>
+      </div>
+      <label style="margin-top:8px"><input type="checkbox" id="loop" checked> Повтор</label>
+      <div class="row reps"><button data-rep="exercise" title="Повторять упражнение целиком">Упражнение</button><button data-rep="bar" title="Повторять такт, где нажали Play">Такт</button><button data-rep="tail" title="Повторять от ноты под курсором до конца упражнения">От ноты</button></div>
+    </section>
+      <section>
+      <h3>Темп</h3>
+      <div id="bpm">75</div>
+      <div id="bpmUnit">ударов в минуту</div>
+      <div class="row">
+        <button data-d="-5">−5</button><button data-d="-1">−1</button><button data-d="1">+1</button><button data-d="5">+5</button>
+      </div>
+      <input type="range" id="bpmRange" min="40" max="240" step="1" value="75">
+    </section>
+      <section>
+      <label><input type="checkbox" id="metro"> Метроном</label>
+      <div class="cap">Громкость щелчка</div>
+      <input type="range" id="metroVol" min="0" max="100" value="80">
+    </section>
+      <section>
+      <label><input type="checkbox" id="countIn"> Счёт перед стартом</label>
+    </section>
+      <section>
+      <h3>Громкость упражнения</h3>
+      <input type="range" id="master" min="0" max="100" value="100">
+    </section>
+      </div>
+      <div id="paneS" hidden>
+      <section>
+        <h3>Пробел</h3>
+        <div class="row reps"><button data-space="pause" title="Пробел: пауза и продолжение (стоп — Esc)">Пауза</button><button data-space="stop" title="Пробел: остановка и возврат в начало">Стоп</button></div>
+      </section>
+      <section>
+      <h3>Настройки</h3>
+      <div class="row views">
+        <button data-view="score" title="Ноты" aria-label="Ноты"><svg viewBox="0 0 32 28" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"><path d="M2 5H30M2 9H30M2 13H30M2 17H30M2 21H30"/><ellipse cx="14" cy="17" rx="3.4" ry="2.5" fill="currentColor" stroke="none" transform="rotate(-20 14 17)"/><path d="M17 16V4" stroke-width="1.4"/></svg></button><button data-view="tab" title="Табы" aria-label="Табы"><svg viewBox="0 0 32 28" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"><path d="M11 3H30M11 8.5H30M11 14H30M11 19.5H30M11 25H30M11 30H30" transform="translate(0 -1) scale(1 .9)"/><g fill="currentColor" stroke="none" font-family="Arial, sans-serif" font-weight="700" font-size="7.5" text-anchor="middle"><text x="5.5" y="10">T</text><text x="5.5" y="17.5">A</text><text x="5.5" y="25">B</text></g></svg></button><button data-view="both" title="Ноты и табы" aria-label="Ноты и табы"><svg viewBox="0 0 32 28" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"><path d="M2 2H30M2 5.5H30M2 9H30M2 12.5H30"/><ellipse cx="12" cy="10.7" rx="2.6" ry="1.9" fill="currentColor" stroke="none" transform="rotate(-20 12 10.7)"/><path d="M14.4 10V2.5" stroke-width="1.2"/><path d="M10 17H30M10 20H30M10 23H30M10 26H30"/><g fill="currentColor" stroke="none" font-family="Arial, sans-serif" font-weight="700" font-size="5.2" text-anchor="middle"><text x="5" y="20.6">T</text><text x="5" y="23.8">A</text><text x="5" y="27">B</text></g></svg></button>
+      </div>
+    </section>
+      </div>
+    </div>
+  </aside>
+  <div class="strip" id="stripR"><button data-pane="M" class="on" title="Metronome">M</button><button data-pane="S" title="Settings">S</button></div>
+</div>
 
+<script src="https://cdn.jsdelivr.net/npm/@coderline/alphatab@1.6.3/dist/alphaTab.min.js"></script>
 <script>
-const CDN = "https://cdn.jsdelivr.net/npm/@coderline/alphatab@1.6.3/dist/";
-const TEX = `\\tempo 75
-\\instrument 27
-\\tuning e4 b3 g3 d3 a2 e2
-.
-\\section "Exercise 01"
-:16
-7.3 7.2 8.3 8.2 8.3 8.2 7.2 10.2 7.3 7.2 8.3 8.2 8.3 8.2 7.2 10.2 |
-\\ac 8.3 8.2 7.2 10.2 7.3 7.2 8.3 8.2 |
-\\section "Exercise 02"
-8.3 8.2 7.2 10.2 7.3 7.2 8.3 8.2 7.3 7.2 8.3 8.2 8.3 8.2 7.2 10.2 |
-\\ac 7.3 7.2 8.3 8.2 8.3 8.2 7.2 10.2 |
-\\section "Exercise 03 (контроль: с паузами)"
-7.3 7.2 8.3 8.2 8.3 8.2 7.2 10.2 7.3 7.2 8.3 8.2 8.3 8.2 7.2 10.2 |
-8.3 8.2 7.2 10.2 7.3 7.2 8.3 8.2 r r r r r r r r |
-`;
+// Вкладки и главы берутся из data/index.json; глава открывается по адресу index.html#chromatic/chapter01  →  data/chromatic/chapter01.json
+let catalog = {};          // { категория: [главы] } из data/index.json
+const lastSelected = {};   // на каждой вкладке: { ch: глава, name: упражнение } — последнее выбранное в списке
+let pendingName = null;    // какое упражнение выбрать после загрузки главы (null = первое)
+let openCat = null, openCh = null;
+let boxes = [], curBox = 0;   // боксы открытой главы и номер выбранного
+const lastBox = {};           // на каждой вкладке: номер последнего выбранного бокса
 
 const $ = s => document.querySelector(s);
-const log = t => { $("#log").textContent += t + "\n"; };
+const status = t => $("#status").textContent = t;
+const NOTATION_SCALE = 0.65;   // масштаб нот и табов; 1 = крупно
+const CDN = "https://cdn.jsdelivr.net/npm/@coderline/alphatab@1.6.3/dist/";
 
+// режим отображения: ноты / табы (с ритмом под ними) / ноты и табы; выбор хранится в настройках браузера
+const VIEW_PROFILE = { score: "Score", tab: "Tab", both: "ScoreTab" };
+// ритм (штили и перекладины) под табулатурой нужен только когда нет нотного стана
+const rhythmFor = v => v === "tab" ? "ShowWithBars" : "Hidden";   // ShowWithBars: штили объединены перекладинами, как в обычных нотах
+function loadView() {
+  try { const v = JSON.parse(localStorage.getItem("seqSettings")).view; if (VIEW_PROFILE[v]) return v; } catch (e) { /* нет сохранённых настроек */ }
+  return "both";
+}
 const api = new alphaTab.AlphaTabApi($("#at"), {
   core: { fontDirectory: CDN + "font/" },
-  display: { scale: 0.9 },
+  display: { staveProfile: VIEW_PROFILE[loadView()], scale: NOTATION_SCALE },
+  notation: { rhythmMode: rhythmFor(loadView()) },
   player: {
     enablePlayer: true,
     soundFont: CDN + "soundfont/sonivox.sf2",
+    scrollElement: $("#atwrap"),
     enableCursor: true,
     enableAnimatedBeatCursor: true
   }
 });
-api.countInVolume = 0;
-api.metronomeVolume = 1;
+api.isLooping = true;
 
-api.scoreLoaded.on(score => {
-  const lines = ["версия alphaTab: " + (alphaTab.VersionInfo ? alphaTab.VersionInfo.version : "?")];
-  score.masterBars.forEach((mb, i) => {
-    let dur = "?";
-    try { dur = mb.calculateDuration(); } catch (e) { dur = "ошибка: " + e.message; }
-    lines.push("такт " + (i + 1) + ": start=" + mb.start + ", длительность=" + dur +
-      ", isAnacrusis=" + mb.isAnacrusis + (mb.section ? ", метка=" + mb.section.text : ""));
+// ---------- гриф: 24 лада, подсветка играющей ноты ----------
+const FRETS = 24, FW = 54, SP = 17, X0 = 30, Y0 = 12;   // гриф широкий и невысокий: занимает ширину колонки, но мало места по вертикали
+const NS = "http://www.w3.org/2000/svg";
+function svgEl(name, attrs, parent) {
+  const e = document.createElementNS(NS, name);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  if (parent) parent.appendChild(e);
+  return e;
+}
+const noteLayer = (function buildFretboard() {
+  const top = Y0 - 8, bottom = Y0 + 5 * SP + 8, w = X0 + FRETS * FW + 10, h = bottom + 19;
+  const svg = svgEl("svg", { viewBox: "0 0 " + w + " " + h, width: "100%" }, $("#fretboard"));
+  svg.style.maxHeight = "140px";
+  svg.style.display = "block";
+  svgEl("rect", { x: X0, y: top, width: FRETS * FW, height: bottom - top, fill: "#ead9b8" }, svg);
+  for (let k = 0; k <= FRETS; k++) {
+    const x = X0 + k * FW;
+    svgEl("line", { x1: x, y1: top, x2: x, y2: bottom, stroke: k === 0 ? "#444" : "#999", "stroke-width": k === 0 ? 4 : 1.5 }, svg);
+  }
+  [3, 5, 7, 9, 15, 17, 19, 21].forEach(f => svgEl("circle", { cx: X0 + (f - 0.5) * FW, cy: Y0 + 2.5 * SP, r: 4, fill: "#cdbb92" }, svg));
+  [12, 24].forEach(f => [1.5, 3.5].forEach(m => svgEl("circle", { cx: X0 + (f - 0.5) * FW, cy: Y0 + m * SP, r: 4, fill: "#cdbb92" }, svg)));
+  ["E", "B", "G", "D", "A", "E"].forEach((name, i) => {
+    const y = Y0 + i * SP;
+    svgEl("line", { x1: X0, y1: y, x2: X0 + FRETS * FW, y2: y, stroke: "#555", "stroke-width": 1 + i * 0.35 }, svg);
+    svgEl("text", { x: X0 - 8, y: y + 4, "text-anchor": "end", "font-size": 11, fill: "#555" }, svg).textContent = name;
   });
-  $("#info").textContent = lines.join("\n");
+  for (let f = 1; f <= FRETS; f++) {
+    svgEl("text", { x: X0 + (f - 0.5) * FW, y: bottom + 14, "text-anchor": "middle", "font-size": 11, fill: "#555" }, svg).textContent = f;
+  }
+  return svgEl("g", {}, svg);
+})();
+
+function showNotes(beats) {
+  noteLayer.textContent = "";
+  for (const b of beats) for (const n of b.notes) {
+    if (n.fret < 1 || n.fret > FRETS) continue;
+    // в alphaTab string 1 = самая толстая; на грифе сверху самая тонкая
+    const row = 6 - n.string;
+    svgEl("circle", { cx: X0 + (n.fret - 0.5) * FW, cy: Y0 + row * SP, r: 7, fill: "#8b0000", stroke: "#fff", "stroke-width": 1.2 }, noteLayer);
+  }
+}
+
+let exercises = [];   // { label, bar, startTick, endTick }
+let current = 0;
+let ready = false;
+
+// ---------- панель метронома; значения запоминаются в браузере ----------
+const DEFAULTS = { bpm: 75, metro: false, metroVol: 80, countIn: false, master: 100, view: "both", repeat: true, repMode: "exercise", spacePause: true };
+function loadSettings() { try { return JSON.parse(localStorage.getItem("seqSettings")) || {}; } catch (e) { return {}; } }
+function saveSettings() { try { localStorage.setItem("seqSettings", JSON.stringify(st)); } catch (e) { /* хранилище недоступно */ } }
+const clamp = (v, lo, hi, def) => { v = Number(v); return Number.isFinite(v) ? Math.min(hi, Math.max(lo, Math.round(v))) : def; };
+const st = Object.assign({}, DEFAULTS, loadSettings());
+st.bpm = clamp(st.bpm, 40, 240, DEFAULTS.bpm);
+st.metroVol = clamp(st.metroVol, 0, 100, DEFAULTS.metroVol);
+st.master = clamp(st.master, 0, 100, DEFAULTS.master);
+st.metro = st.metro === true;
+st.countIn = st.countIn === true;
+st.repeat = st.repeat !== false;
+st.spacePause = st.spacePause !== false;   // Пробел: true — пауза/продолжить, false — стоп
+st.repMode = (st.repMode === "bar" || st.repMode === "tail") ? st.repMode : "exercise";
+st.view = VIEW_PROFILE[st.view] ? st.view : "both";
+let baseTempo = 75;   // темп, записанный в файле упражнений
+let halfSpeed = false;   // Shift+Пробел: этот запуск идёт на 50% темпа
+let beatList = [];       // ноты главы: { tick, beat } — для шагов стрелками
+const cursorAnim = on => { try { api.settings.player.enableAnimatedBeatCursor = on; } catch (e) {} };   // плавное движение курсора; на шагах стрелками выключаем
+let stepEnd = 0, stepFrozen = null, stepObs = null;   // хвост звука ноты шага уводит курсор вперёд: замораживаем его на ноте шага
+let stepping = false, stepPending = false, stepTimer = 0, stepTick = null, stepSaved = null, stepBeat = null;   // stepPending: после шага диапазон остаётся из одной ноты, прежний вернём при Play/Стоп/клике   // шаг стрелкой: играем диапазон из одной ноты, потом возвращаем прежний
+
+function applyAudio() {
+  if (!ready) return;
+  api.playbackSpeed = st.bpm / baseTempo * (halfSpeed ? 0.5 : 1);
+  api.metronomeVolume = st.metro ? st.metroVol / 100 : 0;
+  api.countInVolume = st.countIn ? 1 : 0;
+  // громкость упражнения — это громкость дорожек; общая громкость остаётся 100%, чтобы не менять щелчок
+  api.masterVolume = 1;
+  try { api.changeTrackVolume(api.score.tracks, st.master / 100); }
+  catch (e) { api.masterVolume = st.master / 100; }
+}
+function syncPanel() {
+  $("#bpm").textContent = st.bpm;
+  $("#bpmRange").value = st.bpm;
+  $("#metro").checked = st.metro;
+  $("#metroVol").value = st.metroVol;
+  $("#countIn").checked = st.countIn;
+  $("#master").value = st.master;
+  $("#loop").checked = st.repeat;
+  api.isLooping = st.repeat;
+  document.querySelectorAll("#panel button[data-rep]").forEach(b => b.classList.toggle("on", b.dataset.rep === st.repMode));
+  document.querySelector("#panel .reps").classList.toggle("off", !st.repeat);
+  document.querySelectorAll("#panel button[data-view]").forEach(b => b.classList.toggle("on", b.dataset.view === st.view));
+  document.querySelectorAll("#panel button[data-space]").forEach(b => b.classList.toggle("on", (b.dataset.space === "pause") === st.spacePause));
+}
+function changed() { syncPanel(); applyAudio(); saveSettings(); }
+document.querySelectorAll("#panel button[data-d]").forEach(b => b.onclick = () => { st.bpm = clamp(st.bpm + Number(b.dataset.d), 40, 240, st.bpm); changed(); });
+document.querySelectorAll("#panel button[data-space]").forEach(b => b.onclick = () => { st.spacePause = b.dataset.space === "pause"; changed(); });
+$("#bpmRange").oninput = e => { st.bpm = clamp(e.target.value, 40, 240, st.bpm); changed(); };
+$("#metro").onchange = e => { st.metro = e.target.checked; changed(); };
+$("#metroVol").oninput = e => { st.metroVol = clamp(e.target.value, 0, 100, st.metroVol); changed(); };
+$("#countIn").onchange = e => { st.countIn = e.target.checked; changed(); };
+$("#master").oninput = e => { st.master = clamp(e.target.value, 0, 100, st.master); changed(); };
+// «−» и «=»/«+» — темп ±1, с Shift ±5 (по физическим клавишам: работает в любой раскладке)
+document.addEventListener("keydown", e => {
+  const dir = (e.code === "Minus" || e.code === "NumpadSubtract") ? -1 : (e.code === "Equal" || e.code === "NumpadAdd") ? 1 : 0;
+  if (!dir || e.ctrlKey || e.altKey || e.metaKey || isTyping(e.target)) return;
+  e.preventDefault();
+  st.bpm = clamp(st.bpm + dir * (e.shiftKey ? 5 : 1), 40, 240, st.bpm);
+  changed();
 });
-api.error.on(e => log("ОШИБКА alphaTab: " + (e && e.message ? e.message : e)));
-api.playerReady.on(() => log("плеер готов"));
-api.playerStateChanged.on(a => log("состояние: " + (a.state === 1 ? "играет" : "стоп/пауза")));
-api.playerFinished.on(() => log("доиграно до конца"));
+let scrollAfterRender = false;
+function applyView() {
+  try {
+    if (ready) api.stop();
+    showNotes([]);
+    scrollAfterRender = true;
+    api.settings.fillFromJson({ display: { staveProfile: VIEW_PROFILE[st.view] }, notation: { rhythmMode: rhythmFor(st.view) } });
+    api.updateSettings();
+    api.render();
+  } catch (e) { console.error(e); status("ошибка: " + (e.message || e)); }
+}
+document.querySelectorAll("#panel button[data-view]").forEach(b => b.onclick = () => {
+  if (st.view === b.dataset.view) return;
+  st.view = b.dataset.view;
+  syncPanel(); saveSettings(); applyView();
+});
+syncPanel();
 
-api.tex(TEX);
+// упражнения = такты с подписью (\section) в alphaTex
+api.scoreLoaded.on(score => {
+  const bars = score.masterBars;
+  baseTempo = score.tempo || 75;
+  exercises = bars.filter(mb => mb.section).map(mb => ({ label: mb.section.text, name: mb.section.text.split(": ")[0], bar: mb.index, startTick: mb.start }));
+  if (!exercises.length) exercises = [{ label: score.title || "Упражнение", name: score.title || "Упражнение", bar: 0, startTick: 0 }];
+  beatList = [];
+  const stf = score.tracks[0] && score.tracks[0].staves[0];
+  if (stf) stf.bars.forEach(b => (b.voices[0] ? b.voices[0].beats : []).forEach(bt => { if (!bt.isRest) beatList.push({ tick: bt.absolutePlaybackStart, beat: bt }); }));
+  barRanges = bars.map(mb => ({ startTick: mb.start, endTick: mb.start + mb.calculateDuration() }));
+  const last = bars[bars.length - 1], end = last.start + last.calculateDuration();
+  exercises.forEach((e, i) => e.endTick = i + 1 < exercises.length ? exercises[i + 1].startTick : end);
+  const idx = exercises.findIndex(e => e.name === pendingName);   // упражнение, выбранное в этой вкладке последним
+  current = idx >= 0 ? idx : 0;
+  buildList();
+  applyRange();
+  applyAudio();
+  if (ready) status("готово");
+  const act = $("#leftside .ex.active");
+  if (act) act.scrollIntoView({ block: "nearest" });
+});
 
-$("#play").onclick = () => api.playPause();
-$("#stop").onclick = () => api.stop();
-$("#met").onchange = e => { api.metronomeVolume = e.target.checked ? 1 : 0; };
+// левая панель: название вкладки (не кликается), под ним главы-папки; открытая глава раскрыта и показывает свои упражнения
+const collapsed = {};   // "вкладка/глава": true — пользователь свернул главу; запоминается, пока страница открыта
+function buildList() {
+  const nav = $("#tree");
+  nav.textContent = "";
+  if (!openCat) return;
+  const title = document.createElement("div");
+  title.className = "catTitle";
+  title.textContent = cap(openCat);
+  nav.appendChild(title);
+  (catalog[openCat] || []).forEach(chName => {
+    const key = openCat + "/" + chName;
+    const isOpen = chName === openCh;
+    const expanded = isOpen && !collapsed[key];
+    const f = document.createElement("button");
+    f.className = "chap" + (isOpen ? " open" : "");
+    f.textContent = (expanded ? "▾ " : "▸ ") + cap(chName);
+    f.onclick = () => {
+      if (isOpen) { collapsed[key] = !collapsed[key]; buildList(); }
+      else { collapsed[key] = false; location.hash = key; }
+    };
+    nav.appendChild(f);
+    if (expanded) {
+      exercises.forEach((e, i) => {
+        const row = document.createElement("div");
+        row.className = "exRow";
+        const b = document.createElement("button");
+        b.className = "ex" + (i === current ? " active" : "");
+        b.textContent = e.name;
+        b.onclick = () => select(i);
+        row.appendChild(b);
+        nav.appendChild(row);
+      });
+    }
+  });
+}
+
+// история: последние 50 упражнений, на которых нажимали Play, отдельно для каждой вкладки (пока страница открыта)
+const HISTORY_MAX = 50;
+const playHistory = {};   // { вкладка: [ { ch, name }, ... ] }, новые сверху
+function pushHistory(c, ch, name, box) {
+  const h = playHistory[c] || (playHistory[c] = []);
+  const i = h.findIndex(x => x.ch === ch && x.name === name && x.box === box);
+  if (i >= 0) h.splice(i, 1);
+  h.unshift({ ch, name, box });
+  if (h.length > HISTORY_MAX) h.length = HISTORY_MAX;
+}
+function buildHistory() {
+  const box = $("#hist");
+  box.textContent = "";
+  const h = (openCat && playHistory[openCat]) || [];
+  if (!h.length) return;
+  const t = document.createElement("div");
+  t.className = "catTitle";
+  t.textContent = "История";
+  box.appendChild(t);
+  h.forEach(x => {
+    const b = document.createElement("button");
+    b.className = "hi";
+    b.textContent = cap(x.ch) + " · " + x.name + (x.box !== undefined ? " · " + (x.box + 1) + "-й бокс" : "");
+    b.onclick = () => openExercise(openCat, x.ch, x.name, x.box);
+    box.appendChild(b);
+  });
+}
+function openExercise(c, ch, name, box) {
+  lastSelected[c] = { ch, name };
+  if (box !== undefined) lastBox[c] = box;
+  collapsed[c + "/" + ch] = false;
+  if (c === openCat && ch === openCh) {
+    if (box !== undefined && box !== curBox) { setBox(box, name); return; }
+    buildList();
+    const i = exercises.findIndex(e => e.name === name);
+    if (i >= 0) select(i);
+  } else location.hash = c + "/" + ch;
+}
+
+// диапазон воспроизведения: упражнение или (режим «Повтор → Такт») один такт
+let ourRange = null;   // диапазон, который выставили мы; любой другой — выделение мышью
+let barRanges = [];    // такты главы: { startTick, endTick }
+const exRange = e => ({ startTick: e.startTick, endTick: e.endTick });
+const tickIn = (e, t) => (t >= e.startTick && t < e.endTick) ? t : e.startTick;
+const sameRange = (a, b) => !!a && !!b && a.startTick === b.startTick && a.endTick === b.endTick;
+function setRange(r, keepTick) {
+  stepPending = false; cursorAnim(true);
+  const t = api.tickPosition;
+  ourRange = r;
+  api.playbackRange = r;   // alphaTab ставит курсор в начало диапазона
+  if (keepTick) api.tickPosition = Math.min(Math.max(t, r.startTick), r.endTick - 1);
+  markRange(false);
+}
+const userSelActive = () => { const r = api.playbackRange; return !stepPending && !!r && !sameRange(r, ourRange); };
+function barAt(tick, ex) {
+  const inEx = barRanges.filter(b => b.startTick >= ex.startTick && b.endTick <= ex.endTick);
+  return inEx.find(b => tick >= b.startTick && tick < b.endTick) || inEx[0] || exRange(ex);
+}
+// диапазон повтора по режиму: такт / хвост от ноты до конца упражнения / упражнение целиком
+function rangeFor(t, e) {
+  if (st.repeat && st.repMode === "bar") return barAt(t, e);
+  if (st.repeat && st.repMode === "tail") return { startTick: t, endTick: e.endTick };
+  return exRange(e);
+}
+// в этих режимах начало повтора идёт за курсором
+const followsCursor = () => st.repeat && (st.repMode === "bar" || st.repMode === "tail");
+function applyRange() {
+  if (!ready || !exercises.length) return;
+  const e = exercises[current];
+  setRange(exRange(e), false);
+  api.tickPosition = e.startTick;
+}
+// какой диапазон сейчас: наш или выделенный мышью; от этого зависит, что подсвечивать
+function markRange(user) {
+  const w = $("#atwrap");
+  w.classList.toggle("exrange", !user);
+  w.classList.toggle("usersel", user);
+}
+if (api.playbackRangeChanged) api.playbackRangeChanged.on(e => {
+  if (stepping) return;   // шаг стрелкой временно сужает диапазон: подсветку не трогаем
+  const r = e && e.playbackRange;
+  if (!r || !exercises[current]) { $("#atwrap").classList.remove("exrange", "usersel"); return; }
+  markRange(!sameRange(r, ourRange));
+});
+// простой клик по нотам: alphaTab сбрасывает диапазон (играло бы до конца главы) — возвращаем наш, курсор остаётся где кликнули
+if (api.beatMouseUp) api.beatMouseUp.on(() => {
+  const wasStep = stepping || stepPending;
+  if (wasStep) { stepping = false; stepPending = false; clearTimeout(stepTimer); cursorAnim(true); api.isLooping = st.repeat; applyAudio(); }
+  if (!ready || !exercises.length || (api.playbackRange && !wasStep)) return;
+  let t = api.tickPosition;
+  const idx = exercises.findIndex(x => t >= x.startTick && t < x.endTick);
+  if (idx >= 0 && idx !== current) {   // клик в другом упражнении: оно становится текущим (без прокрутки и стопа — их делаем ниже сами)
+    current = idx;
+    if (openCat) lastSelected[openCat] = { ch: openCh, name: exercises[idx].name };
+    $("#list").querySelectorAll(".ex").forEach((b, k) => b.classList.toggle("active", k === idx));
+  }
+  const e = exercises[current];
+  if (t < e.startTick || t >= e.endTick) t = e.startTick;
+  const wasPlaying = playing, hs = halfSpeed;
+  if (wasPlaying) api.stop();   // полный стоп, а не пауза: после паузы плеер возвращался к звучавшей ноте
+  setRange(rangeFor(t, e), false);
+  api.tickPosition = t;
+  if (wasPlaying) { playStarting = true; setTimeout(() => { playStarting = false; halfSpeed = hs; applyAudio(); api.play(); }, 100); }   // и продолжаем с кликнутой ноты
+});
+
+function select(i) {
+  current = i;
+  if (openCat) lastSelected[openCat] = { ch: openCh, name: exercises[i].name };
+  if (ready) api.stop();
+  showNotes([]);
+  $("#list").querySelectorAll(".ex").forEach((b, k) => b.classList.toggle("active", k === i));
+  applyRange();
+  scrollToExercise(i);
+}
+
+function scrollToExercise(i) { scrollToBarIndex(exercises[i].bar); }
+function scrollToBarIndex(bi) {
+  try {
+    const b = api.boundsLookup.findMasterBarByIndex(bi);
+    if (!b) return;
+    $("#atwrap").scrollTo({ top: Math.max(0, $("#at").offsetTop + b.realBounds.y - 8), behavior: "smooth" });
+  } catch (e) { /* нотация ещё не отрисована */ }
+}
+
+api.soundFontLoad.on(e => status("звуки: " + Math.round(e.loaded / e.total * 100) + "%"));
+let playing = false;
+let chapterLoading = false;   // идёт загрузка новой главы: старую играть нельзя
+let broken = false;   // глава не загрузилась: нотацию не показываем, играть нечего
+function updateTransport() {
+  $("#play").disabled = !ready || playing || broken || chapterLoading;
+  $("#pause").disabled = !ready || !playing;
+  $("#stop").disabled = !ready;
+}
+api.playerReady.on(() => { ready = true; chapterLoading = false; updateTransport(); status("готово"); applyRange(); applyAudio(); });
+api.renderFinished.on(() => {
+  if (!ready) status("нотация отрисована");
+  if (scrollAfterRender) { scrollAfterRender = false; scrollToExercise(current); }   // после смены вида возвращаемся к выбранному упражнению
+});
+api.playerPositionChanged.on(e => {
+  if (!stepping || stepFrozen || e.currentTick < stepEnd) return;
+  const els = Array.from(document.querySelectorAll(".at-cursor-beat, .at-cursor-bar"));
+  stepFrozen = els.map(x => x.style.cssText);
+  if (!stepObs) stepObs = new MutationObserver(() => {
+    if (!stepping || !stepFrozen) return;
+    Array.from(document.querySelectorAll(".at-cursor-beat, .at-cursor-bar")).forEach((x, k) => {
+      if (stepFrozen[k] !== undefined && x.style.cssText !== stepFrozen[k]) x.style.cssText = stepFrozen[k];
+    });
+  });
+  stepObs.disconnect();
+  els.forEach(x => stepObs.observe(x, { attributes: true, attributeFilter: ["style"] }));
+});
+api.activeBeatsChanged.on(e => { if (stepping || stepPending) return; showNotes(e.activeBeats); });   // во время шага гриф показывает только ноту шага
+// без повтора упражнение доигрывает и останавливается; курсор встаёт в его начало
+function rewindExercise() {
+  const e = exercises[current];
+  if (!ready || !e || userSelActive()) return;
+  setRange(exRange(e), false);
+  api.tickPosition = e.startTick;
+}
+api.playerFinished.on(() => { if (stepping) { endStep(); return; } showNotes([]); if (halfSpeed && !st.repeat) { halfSpeed = false; applyAudio(); } if (!st.repeat) rewindExercise(); });   // при повторе это конец круга, а не запуска
+api.error.on(e => { console.error(e); status("ошибка: " + (e.message || e)); });
+let paused = false;   // пауза посреди воспроизведения: Play продолжает с того же места, диапазон не пересчитываем
+api.playerStateChanged.on(e => {
+  playing = e.state === 1;
+  paused = e.state === 0 && !e.stopped;
+  if (e.state === 0 && e.stopped && halfSpeed) { halfSpeed = false; applyAudio(); }   // запуск на 50% закончился
+  updateTransport();
+  // Play нажат: упражнение попадает в историю вкладки
+  if (playing && !stepping && openCat && exercises[current]) { pushHistory(openCat, openCh, exercises[current].name, boxes.length > 1 ? curBox : undefined); buildHistory(); }
+});
+
+let playStarting = false;
+function startPlay() {
+  if (playStarting) return;
+  const wasStep = stepping, hadStep = stepping || stepPending, hs = halfSpeed;
+  if (wasStep) { api.pause(); endStep(); }   // Play во время шага: возвращаем диапазон и играем с этой ноты
+  if (hadStep) api.stop();   // чистый старт: после шагов (особенно с паузы) плеер мог остаться на старой позиции
+  let moved = restoreAfterStep();
+  if (!ready || (playing && !wasStep) || broken || chapterLoading) return;
+  if (!paused && !userSelActive() && exercises.length) {
+    const e = exercises[current];
+    if (followsCursor()) {
+      let t = api.tickPosition;
+      if (t < e.startTick || t >= e.endTick) t = e.startTick;
+      const r = rangeFor(t, e);   // такт или хвост от ноты, где нажали Play; диапазон не трогаем, если он уже тот же
+      if (!sameRange(api.playbackRange, r)) { setRange(r, false); moved = true; }
+      if (api.tickPosition !== t) { api.tickPosition = t; moved = true; }   // играем с выбранной ноты, а не с начала такта
+    } else {
+      const pr = exRange(e);
+      if (!sameRange(api.playbackRange, pr)) { setRange(pr, true); moved = true; }
+    }
+  }
+  // сразу после смены диапазона и позиции play() теряет позицию (тишина с начала такта до курсора): даём плееру применить их
+  if (moved) { playStarting = true; setTimeout(() => { playStarting = false; if (hadStep) { halfSpeed = hs; applyAudio(); } api.play(); }, 100); }
+  else api.play();
+}
+$("#play").onclick = startPlay;
+$("#pause").onclick = () => api.pause();
+$("#stop").onclick = () => {
+  const afterStep = stepping || stepPending;
+  if (stepping) endStep();
+  restoreAfterStep();
+  api.stop(); showNotes([]); applyAudio();
+  if (afterStep && api.playbackRange) api.tickPosition = api.playbackRange.startTick;   // курсор в начало диапазона
+};
+// пробел: старт, повторный пробел — стоп (курсор в начало); в полях ввода текста не срабатывает
+const isTyping = t => !!t && (t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable ||
+  (t.tagName === "INPUT" && /^(text|number|search|email|password)$/.test(t.type)));
+document.addEventListener("keydown", e => {
+  if (e.code !== "Space" || isTyping(e.target)) return;
+  e.preventDefault();
+  if (e.repeat) return;
+  if (e.target && (e.target.tagName === "BUTTON" || e.target.tagName === "INPUT")) e.target.blur();
+  if (stepping) { if (st.spacePause) { api.pause(); endStep(); } else $("#stop").onclick(); return; }   // Пробел во время шага стрелкой
+  if (playing) { if (st.spacePause) $("#pause").onclick(); else $("#stop").onclick(); }   // пауза/продолжить или стоп — по настройке; Esc всегда стоп
+  else if (!$("#play").disabled) {
+    if (e.shiftKey) { halfSpeed = true; applyAudio(); }   // Shift+Пробел: 50% темпа до остановки (Esc) или конца упражнения
+    $("#play").onclick();
+  }
+});
+document.addEventListener("keydown", e => {   // Esc — стоп
+  if (e.code !== "Escape" || e.ctrlKey || e.altKey || e.metaKey || isTyping(e.target)) return;
+  if (!$("#stop").disabled) { e.preventDefault(); $("#stop").onclick(); }
+});
+document.addEventListener("keyup", e => { if (e.code === "Space" && !isTyping(e.target)) e.preventDefault(); });
+// шаги стрелками: звучит одна нота, воспроизведение на паузе, курсор на ней
+function followTick(tick) {   // шаг перешёл в другое упражнение: оно становится текущим
+  const idx = exercises.findIndex(x => tick >= x.startTick && tick < x.endTick);
+  if (idx < 0 || idx === current) return;
+  current = idx;
+  if (openCat) lastSelected[openCat] = { ch: openCh, name: exercises[idx].name };
+  $("#list").querySelectorAll(".ex").forEach((b, k) => b.classList.toggle("active", k === idx));
+  scrollToExercise(idx);
+}
+function stepTo(tick, item) {
+  followTick(tick);
+  const e = exercises[current];
+  stepTick = tick;
+  if (!item) {
+    if (followsCursor() && !userSelActive()) {
+      const r = rangeFor(tick, e);
+      if (!sameRange(api.playbackRange, r)) setRange(r, false);
+    }
+    api.tickPosition = tick;
+    return;
+  }
+  if (!stepping && !stepPending) stepSaved = { wasUser: userSelActive(), range: api.playbackRange };   // что вернуть после шага
+  clearTimeout(stepTimer);
+  stepping = true;
+  stepBeat = item.beat;
+  cursorAnim(false);   // на шаге курсор стоит на ноте, не «доезжает» до следующей
+  api.metronomeVolume = 0; api.countInVolume = 0; api.isLooping = false;   // на шаге без щелчка, предтакта и повтора
+  const dur = item.beat.playbackDuration, cut = Math.min(40, Math.floor(dur * 0.2));   // чуть короче ноты: курсор и гриф не доходят до следующей
+  stepEnd = tick + dur - cut; stepFrozen = null;
+  api.playbackRange = { startTick: tick, endTick: tick + dur - cut };   // одна нота: alphaTab сам остановится в конце диапазона
+  api.tickPosition = tick;
+  api.play();
+  showNotes([item.beat]);
+  stepTimer = setTimeout(endStep, item.beat.playbackDuration / 960 * 60000 / (baseTempo * api.playbackSpeed) + 500);   // запасной выход, если конец ноты не пришёл
+}
+function endStep() {
+  if (!stepping) return;
+  clearTimeout(stepTimer);
+  stepping = false;
+  stepPending = true;   // диапазон пока остаётся из одной ноты: курсор не дёргаем
+  stepFrozen = null;
+  api.tickPosition = stepTick;
+  api.isLooping = st.repeat;
+  applyAudio();
+  showNotes(stepBeat ? [stepBeat] : []);
+}
+function restoreAfterStep() {   // вернуть прежний диапазон перед Play / Стоп / сменой повтора; true — если что-то меняли
+  if (!stepPending) return false;
+  stepPending = false; cursorAnim(true);
+  const e = exercises[current], sv = stepSaved, t = stepTick;
+  if (sv && sv.wasUser) api.playbackRange = sv.range;   // выделение мышью сохраняем
+  else setRange(rangeFor(t, e), false);
+  api.tickPosition = t;
+  return true;
+}
+function stepNote(dir) {
+  if (!ready || !exercises.length) return;
+  if (playing) api.pause();
+  const cur = (stepping || stepPending) && stepTick !== null ? stepTick : api.tickPosition;
+  const it = dir > 0 ? beatList.find(b => b.tick > cur + 1) : [...beatList].reverse().find(b => b.tick < cur - 1);
+  if (it) stepTo(it.tick, it);
+}
+function stepBar(dir) {
+  if (!ready || !exercises.length) return;
+  if (playing) api.pause();
+  const cur = (stepping || stepPending) && stepTick !== null ? stepTick : api.tickPosition;
+  const bars = barRanges;
+  let tgt;
+  if (dir > 0) tgt = bars.find(b => b.startTick > cur + 1);
+  else {
+    const here = bars.find(b => cur >= b.startTick && cur < b.endTick);
+    tgt = here && cur > here.startTick + 1 ? here : [...bars].reverse().find(b => b.startTick < cur - 1);   // сначала в начало текущего такта
+  }
+  if (tgt) stepTo(tgt.startTick, beatList.find(b => b.tick >= tgt.startTick));
+}
+document.addEventListener("keydown", e => {
+  if (e.code !== "ArrowLeft" && e.code !== "ArrowRight") return;
+  if (isTyping(e.target) || e.ctrlKey || e.altKey || e.metaKey) return;
+  if (e.target && e.target.tagName === "INPUT" && e.target.type === "range") return;
+  e.preventDefault();
+  const dir = e.code === "ArrowRight" ? 1 : -1;
+  if (e.shiftKey) stepBar(dir); else stepNote(dir);
+});
+function refreshRange() {
+  restoreAfterStep();
+  if (!ready || !exercises.length || userSelActive()) return;
+  const e = exercises[current];
+  if (followsCursor()) { if (playing) setRange(rangeFor(api.tickPosition, e), true); }
+  else { const pr = exRange(e); if (!sameRange(api.playbackRange, pr)) setRange(pr, true); }
+}
+function repeatChanged() { syncPanel(); saveSettings(); refreshRange(); }
+$("#loop").onchange = e => { st.repeat = e.target.checked; repeatChanged(); };
+document.querySelectorAll("#panel button[data-rep]").forEach(b => b.onclick = () => { st.repMode = b.dataset.rep; repeatChanged(); });
+// R — повтор вкл/выкл, Shift+R — режим повтора по кругу (упражнение / такт / от ноты)
+document.addEventListener("keydown", e => {
+  if (e.code !== "KeyR" || e.ctrlKey || e.altKey || e.metaKey || isTyping(e.target)) return;
+  e.preventDefault();
+  if (e.shiftKey) { const modes = ["exercise", "bar", "tail"]; st.repMode = modes[(modes.indexOf(st.repMode) + 1) % modes.length]; }
+  else st.repeat = !st.repeat;
+  repeatChanged();
+});
+
+// Shift+↑/↓ — предыдущее/следующее упражнение (сначала в начало текущего), Home/End — первое/последнее
+function goExercise(i) {
+  if (!ready || !exercises.length) return;
+  i = Math.max(0, Math.min(exercises.length - 1, i));
+  const wasPlaying = playing, hs = halfSpeed;
+  if (stepping) { clearTimeout(stepTimer); stepping = false; }
+  select(i);
+  if (wasPlaying) { playStarting = true; setTimeout(() => { playStarting = false; halfSpeed = hs; applyAudio(); api.play(); }, 100); }   // игра продолжается с начала нового упражнения
+}
+document.addEventListener("keydown", e => {
+  const nav = (e.code === "ArrowUp" || e.code === "ArrowDown") ? e.shiftKey : (e.code === "Home" || e.code === "End") && !e.shiftKey;
+  if (!nav || e.ctrlKey || e.altKey || e.metaKey || isTyping(e.target)) return;
+  if (e.target && e.target.tagName === "INPUT" && e.target.type === "range") return;
+  if (!ready || !exercises.length) return;
+  e.preventDefault();
+  if (e.code === "Home") return goExercise(0);
+  if (e.code === "End") return goExercise(exercises.length - 1);
+  if (e.code === "ArrowDown") return goExercise(current + 1);
+  const cur = (stepping || stepPending) && stepTick !== null ? stepTick : api.tickPosition;
+  goExercise(cur > exercises[current].startTick + 1 ? current : current - 1);   // сначала в начало текущего, повторно — назад
+});
+
+// ---------- вкладки и главы ----------
+const cap = s => { const t = (s.replace(/^\d+/, "") || s).replace(/([a-zA-Z])(\d+)$/, "$1 $2"); return t.charAt(0).toUpperCase() + t.slice(1); };
+   // число в начале имени задаёт порядок и не показывается
+const has = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
+
+function resolve() {
+  const cats = Object.keys(catalog);
+  let [c, ch] = location.hash.slice(1).split("/");
+  if (!has(catalog, c)) { c = cats[0]; ch = null; }
+  const list = catalog[c];
+  if (!list.includes(ch)) ch = lastSelected[c] && list.includes(lastSelected[c].ch) ? lastSelected[c].ch : list[0];
+  return { c, ch };
+}
+
+function buildTabs() {
+  const box = $("#tabs");
+  box.textContent = "";
+  Object.keys(catalog).forEach(c => {
+    const b = document.createElement("button");
+    b.textContent = cap(c);
+    b.className = c === openCat ? "active" : "";
+    b.onclick = () => { location.hash = c + "/" + (lastSelected[c] && catalog[c].includes(lastSelected[c].ch) ? lastSelected[c].ch : catalog[c][0]); };
+    box.appendChild(b);
+  });
+}
+
+function showCrumbs(c, ch) {
+  const box = $("#crumbs");
+  box.innerHTML = "";
+  const parts = [cap(c), cap(ch)];
+  parts.forEach((p, i) => {
+    const el = document.createElement(i === parts.length - 1 ? "b" : "span");
+    el.textContent = p;
+    box.append(el, i < parts.length - 1 ? " / " : "");
+  });
+}
+
+// ---------- боксы: ряд мини-схем под вкладками ----------
+function buildBoxRow() {
+  const row = $("#boxes");
+  row.textContent = "";
+  const okDots = b => Array.isArray(b.dots) && b.dots.length > 0;
+  if (boxes.length < 2 || !boxes.every(okDots)) { row.hidden = true; return; }
+  row.hidden = false;
+  const span = b => { const f = b.dots.map(d => d[1]); return Math.max(...f) - Math.min(...f) + 1; };
+  const cells = Math.max(...boxes.map(span));
+  const CW = 11, SPB = 7, PAD = 4, R = 2.7;
+  const w = cells * CW + 2 * PAD, h = 5 * SPB + 2 * PAD;
+  boxes.forEach((b, i) => {
+    const minF = Math.min(...b.dots.map(d => d[1]));
+    const btn = document.createElement("button");
+    btn.title = (i + 1) + "-й бокс";
+    const svg = svgEl("svg", { viewBox: "0 0 " + w + " " + h, width: w, height: h }, btn);
+    for (let k = 0; k <= cells; k++) svgEl("line", { x1: PAD + k * CW, y1: PAD, x2: PAD + k * CW, y2: PAD + 5 * SPB, stroke: "#bbb", "stroke-width": 1 }, svg);
+    for (let s = 0; s < 6; s++) svgEl("line", { x1: PAD, y1: PAD + s * SPB, x2: PAD + cells * CW, y2: PAD + s * SPB, stroke: "#777", "stroke-width": 1 }, svg);
+    // в данных струна 1 = тонкая E (сверху), как на схеме
+    b.dots.forEach(d => svgEl("circle", { cx: PAD + (d[1] - minF + 0.5) * CW, cy: PAD + (d[0] - 1) * SPB, r: R, class: "d" }, svg));
+    const cap = document.createElement("div");
+    cap.textContent = (i + 1) + "-й бокс";
+    btn.appendChild(cap);
+    btn.onclick = () => setBox(i);
+    row.appendChild(btn);
+  });
+  markBoxes();
+}
+function markBoxes() {
+  Array.from($("#boxes").children).forEach((b, i) => b.classList.toggle("on", i === curBox));
+}
+// переключение бокса: та же глава и то же упражнение, но с нотами выбранного бокса
+function setBox(i, name) {
+  if (i < 0 || i >= boxes.length || (i === curBox && name === undefined)) return;
+  curBox = i;
+  if (openCat) lastBox[openCat] = i;
+  markBoxes();
+  pendingName = name !== undefined ? name : (exercises[current] ? exercises[current].name : null);
+  if (ready) api.stop();
+  showNotes([]);
+  scrollAfterRender = true;
+  api.tex(boxes[i].alphatex);
+}
+
+let loadSeq = 0;
+function loadChapter(c, ch) {
+  const my = ++loadSeq;
+  if (ready) api.stop();
+  showNotes([]);
+  chapterLoading = true; updateTransport();
+  status("загрузка главы…");
+  fetch("data/" + c + "/" + ch + ".json?t=" + Date.now(), { cache: "no-store" })
+    .then(r => { if (!r.ok) throw new Error("файл не найден: data/" + c + "/" + ch + ".json"); return r.json(); })
+    .then(d => {
+      if (my !== loadSeq) return;
+      let bx = null;
+      if (d && Array.isArray(d.boxes) && d.boxes.length) bx = d.boxes;
+      else if (d && d.alphatex) bx = [{ name: "", dots: [], alphatex: d.alphatex }];   // старый формат: один бокс без схемы
+      if (!bx || bx.some(b => !b || !b.alphatex)) throw new Error("в файле главы нет боксов с alphatex");
+      boxes = bx;
+      curBox = lastBox[c] !== undefined && lastBox[c] < boxes.length ? lastBox[c] : 0;
+      buildBoxRow();
+      $("#atwrap").scrollTop = 0;
+      broken = false;
+      $("#at").style.visibility = "";
+      updateTransport();
+      api.tex(boxes[curBox].alphatex);
+    })
+    .catch(e => {
+      if (my !== loadSeq) return;
+      console.error(e); status(String(e.message || e));
+      exercises = []; boxes = []; buildBoxRow(); buildList();
+      // не оставляем на экране чужую главу
+      if (ready) api.stop();
+      showNotes([]);
+      broken = true; chapterLoading = false;
+      $("#at").style.visibility = "hidden";
+      updateTransport();
+    });
+}
+
+function route() {
+  if (!Object.keys(catalog).length) return;
+  const { c, ch } = resolve();
+  if (!ch) { status("в index.json у вкладки «" + c + "» нет глав"); return; }
+  const want = "#" + c + "/" + ch;
+  if (location.hash !== want) history.replaceState(null, "", want);
+  if (c === openCat && ch === openCh) return;
+  openCat = c; openCh = ch;
+  pendingName = lastSelected[c] && lastSelected[c].ch === ch ? lastSelected[c].name : null;
+  exercises = []; boxes = []; buildBoxRow();
+  buildTabs();
+  showCrumbs(c, ch);
+  buildList();
+  buildHistory();
+  loadChapter(c, ch);
+}
+window.addEventListener("hashchange", route);
+
+fetch("data/index.json?t=" + Date.now(), { cache: "no-store" })
+  .then(r => { if (!r.ok) throw new Error("файл не найден: data/index.json"); return r.json(); })
+  .then(d => {
+    if (!d || typeof d !== "object" || Array.isArray(d) || !Object.keys(d).length) throw new Error("index.json: ожидался список вкладок и глав");
+    catalog = d;
+    route();
+  })
+  .catch(e => { console.error(e); status(String(e.message || e)); });
+
+// боковые панели: полоски C/H (слева) и M/S (справа) переключают содержимое; клик по активной букве сворачивает панель
+// Tab сворачивает открытые панели, второе нажатие открывает только их (свёрнутые мышью остаются свёрнутыми)
+const sides = {
+  L: { aside: $("#leftside"), strip: $("#stripL"), head: $("#leftHead"), panes: { C: ["#list", "Contents"], H: ["#histPane", "History"] }, cur: "C", open: true },
+  R: { aside: $("#rightside"), strip: $("#stripR"), head: $("#rightHead"), panes: { M: ["#paneM", "Metronome"], S: ["#paneS", "Settings"] }, cur: "M", open: true },
+};
+let tabSaved = null;
+function showSide(k) {
+  const sd = sides[k];
+  sd.aside.hidden = !sd.open;
+  Object.entries(sd.panes).forEach(([key, [sel]]) => { $(sel).hidden = key !== sd.cur; });
+  sd.head.textContent = sd.panes[sd.cur][1];
+  sd.strip.querySelectorAll("button").forEach(b => b.classList.toggle("on", sd.open && b.dataset.pane === sd.cur));
+  requestAnimationFrame(() => window.dispatchEvent(new Event("resize")));   // партитура подстраивается под новую ширину
+}
+Object.entries(sides).forEach(([k, sd]) => sd.strip.querySelectorAll("button").forEach(b => b.onclick = () => {
+  if (sd.open && sd.cur === b.dataset.pane) sd.open = false; else { sd.cur = b.dataset.pane; sd.open = true; }
+  tabSaved = null;
+  showSide(k);
+}));
+document.addEventListener("keydown", e => {
+  if (e.code !== "Tab" || e.ctrlKey || e.altKey || e.metaKey || e.shiftKey || isTyping(e.target)) return;
+  e.preventDefault();
+  if (sides.L.open || sides.R.open) { tabSaved = { L: sides.L.open, R: sides.R.open }; sides.L.open = sides.R.open = false; }
+  else { const sv = tabSaved || { L: true, R: true }; sides.L.open = sv.L; sides.R.open = sv.R; tabSaved = null; }
+  showSide("L"); showSide("R");
+});
 </script>
 </body>
 </html>

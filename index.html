@@ -14,13 +14,10 @@
   #tabs { display: flex; flex-wrap: wrap; gap: 6px; }
   #tabs button { margin: 0; padding: 4px 18px; background: #fff; border: 1px solid #ddd; border-radius: 6px; }
   #tabs button.active { background: #e8f0fe; border-color: #7aa7f7; font-weight: 600; }
-  #crumbRow { flex: none; display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 1px 2px 3px; }
-  #crumbs { font-size: 13px; color: #666; }
-  #crumbs b { color: #222; }
   button { font-size: 15px; padding: 6px 16px; margin-right: 6px; cursor: pointer; }
   button:disabled { cursor: default; opacity: .5; }
   label { font-size: 14px; margin-left: 8px; }
-  #status { font-size: 12px; color: #888; }
+  #status { font-size: 12px; color: #888; margin-left: auto; white-space: nowrap; }
   #layout { flex: 1; min-height: 0; display: grid; grid-template-columns: 22px auto minmax(0, 1fr) auto 22px; grid-template-rows: minmax(0, 1fr); }
   #stripL { grid-column: 1; } #leftside { grid-column: 2; } #center { grid-column: 3; } #rightside { grid-column: 4; } #stripR { grid-column: 5; }
   .strip { background: #e6e6e6; display: flex; flex-direction: column; align-items: stretch; gap: 2px; padding-top: 4px; }
@@ -86,6 +83,7 @@
 <div id="top">
   <div id="logo">Seq Trainer</div>
   <div id="tabs"></div>
+  <span id="status">загрузка…</span>
 </div>
 <div id="layout">
   <div class="strip" id="stripL"><button data-pane="C" class="on" title="Contents">C</button><button data-pane="H" title="History">H</button></div>
@@ -97,7 +95,6 @@
   <main id="center">
     <div id="fretboard"></div>
     <div id="boxes" hidden></div>
-    <div id="crumbRow"><div id="crumbs">…</div><span id="status">загрузка…</span></div>
     <div id="atwrap"><div id="at"></div></div>
   </main>
   <aside id="rightside" class="side">
@@ -748,17 +745,6 @@ function buildTabs() {
   });
 }
 
-function showCrumbs(c, ch) {
-  const box = $("#crumbs");
-  box.innerHTML = "";
-  const parts = [cap(c), cap(ch)];
-  parts.forEach((p, i) => {
-    const el = document.createElement(i === parts.length - 1 ? "b" : "span");
-    el.textContent = p;
-    box.append(el, i < parts.length - 1 ? " / " : "");
-  });
-}
-
 // ---------- боксы: ряд мини-схем под вкладками ----------
 function buildBoxRow() {
   const row = $("#boxes");
@@ -851,7 +837,6 @@ function route() {
   pendingName = lastSelected[c] && lastSelected[c].ch === ch ? lastSelected[c].name : null;
   exercises = []; boxes = []; buildBoxRow();
   buildTabs();
-  showCrumbs(c, ch);
   buildList();
   buildHistory();
   loadChapter(c, ch);

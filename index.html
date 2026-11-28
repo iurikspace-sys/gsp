@@ -18,6 +18,9 @@
   button:disabled { cursor: default; opacity: .5; }
   label { font-size: 14px; margin-left: 8px; }
   #status { font-size: 12px; color: #888; margin-left: auto; white-space: nowrap; }
+  #top select { font-size: 14px; padding: 4px 6px; }
+  #fretBtn { margin: 0; padding: 4px 14px; background: #fff; border: 1px solid #ddd; border-radius: 6px; }
+  #fretBtn.on { background: #e8f0fe; border-color: #7aa7f7; }
   #layout { flex: 1; min-height: 0; display: grid; grid-template-columns: 22px auto minmax(0, 1fr) auto 22px; grid-template-rows: minmax(0, 1fr); }
   #stripL { grid-column: 1; } #leftside { grid-column: 2; } #center { grid-column: 3; } #rightside { grid-column: 4; } #stripR { grid-column: 5; }
   .strip { background: #e6e6e6; display: flex; flex-direction: column; align-items: stretch; gap: 2px; padding-top: 4px; }
@@ -84,6 +87,8 @@
   <div id="logo">Seq Trainer</div>
   <div id="tabs"></div>
   <span id="status">загрузка…</span>
+  <select id="zoom" title="Масштаб нот"><option value="50">50%</option><option value="75">75%</option><option value="100">100%</option><option value="125">125%</option><option value="150">150%</option><option value="175">175%</option><option value="200">200%</option></select>
+  <button id="fretBtn" class="on" title="Показать/скрыть гриф (Shift+Tab)">Гриф</button>
 </div>
 <div id="layout">
   <div class="strip" id="stripL"><button data-pane="C" class="on" title="Contents">C</button><button data-pane="H" title="History">H</button></div>
@@ -160,7 +165,9 @@ const lastBox = {};           // на каждой вкладке: номер п
 
 const $ = s => document.querySelector(s);
 const status = t => $("#status").textContent = t;
-const NOTATION_SCALE = 0.65;   // масштаб нот и табов; 1 = крупно
+const NOTATION_SCALE = 0.65;   // масштаб нот и табов при 100%; 1 = крупно
+const ZOOMS = [50, 75, 100, 125, 150, 175, 200];   // варианты масштаба в процентах
+const zoomOf = z => ZOOMS.includes(Number(z)) ? Number(z) : 100;
 const CDN = "https://cdn.jsdelivr.net/npm/@coderline/alphatab@1.6.3/dist/";
 
 // режим отображения: ноты / табы (с ритмом под ними) / ноты и табы; выбор хранится в настройках браузера
@@ -173,7 +180,7 @@ function loadView() {
 }
 const api = new alphaTab.AlphaTabApi($("#at"), {
   core: { fontDirectory: CDN + "font/" },
-  display: { staveProfile: VIEW_PROFILE[loadView()], scale: NOTATION_SCALE },
+  display: { staveProfile: VIEW_PROFILE[loadView()], scale: NOTATION_SCALE * zoomOf(loadSettings().zoom) / 100 },
   notation: { rhythmMode: rhythmFor(loadView()) },
   player: {
     enablePlayer: true,
@@ -232,7 +239,7 @@ let current = 0;
 let ready = false;
 
 // ---------- панель метронома; значения запоминаются в браузере ----------
-const DEFAULTS = { bpm: 75, metro: false, metroVol: 80, countIn: false, master: 100, view: "both", repeat: true, repMode: "exercise", spacePause: true };
+const DEFAULTS = { bpm: 75, metro: false, metroVol: 80, countIn: false, master: 100, view: "both", repeat: true, repMode: "exercise", spacePause: true, zoom: 100, fret: true };
 function loadSettings() { try { return JSON.parse(localStorage.getItem("seqSettings")) || {}; } catch (e) { return {}; } }
 function saveSettings() { try { localStorage.setItem("seqSettings", JSON.stringify(st)); } catch (e) { /* хранилище недоступно */ } }
 const clamp = (v, lo, hi, def) => { v = Number(v); return Number.isFinite(v) ? Math.min(hi, Math.max(lo, Math.round(v))) : def; };
@@ -246,6 +253,8 @@ st.repeat = st.repeat !== false;
 st.spacePause = st.spacePause !== false;   // Пробел: true — пауза/продолжить, false — стоп
 st.repMode = (st.repMode === "bar" || st.repMode === "tail") ? st.repMode : "exercise";
 st.view = VIEW_PROFILE[st.view] ? st.view : "both";
+st.zoom = zoomOf(st.zoom);
+st.fret = st.fret !== false;   // гриф показан
 let baseTempo = 75;   // темп, записанный в файле упражнений
 let halfSpeed = false;   // Shift+Пробел: этот запуск идёт на 50% темпа
 let beatList = [];       // ноты главы: { tick, beat } — для шагов стрелками
@@ -299,7 +308,7 @@ function applyView() {
     if (ready) api.stop();
     showNotes([]);
     scrollAfterRender = true;
-    api.settings.fillFromJson({ display: { staveProfile: VIEW_PROFILE[st.view] }, notation: { rhythmMode: rhythmFor(st.view) } });
+    api.settings.fillFromJson({ display: { staveProfile: VIEW_PROFILE[st.view], scale: NOTATION_SCALE * st.zoom / 100 }, notation: { rhythmMode: rhythmFor(st.view) } });
     api.updateSettings();
     api.render();
   } catch (e) { console.error(e); status("ошибка: " + (e.message || e)); }
@@ -879,6 +888,26 @@ document.addEventListener("keydown", e => {
   else { const sv = tabSaved || { L: true, R: true }; sides.L.open = sv.L; sides.R.open = sv.R; tabSaved = null; }
   showSide("L"); showSide("R");
 });
+
+// ---------- справа в верхней полосе: масштаб нот и кнопка «Гриф» ----------
+// масштаб перерисовывает партитуру так же, как смена вида: игра останавливается, выбранное упражнение остаётся на экране
+const zoomSel = $("#zoom");
+zoomSel.value = String(st.zoom);
+zoomSel.onchange = e => { st.zoom = zoomOf(e.target.value); saveSettings(); applyView(); zoomSel.blur(); };
+// гриф прячется отдельно от боковых панелей; ряд боксов остаётся
+function applyFret() {
+  $("#fretboard").hidden = !st.fret;
+  $("#fretBtn").classList.toggle("on", st.fret);
+  requestAnimationFrame(() => window.dispatchEvent(new Event("resize")));
+}
+function toggleFret() { st.fret = !st.fret; saveSettings(); applyFret(); }
+$("#fretBtn").onclick = () => { toggleFret(); $("#fretBtn").blur(); };   // blur: иначе Пробел нажмёт кнопку повторно
+document.addEventListener("keydown", e => {   // Shift+Tab — гриф (простой Tab — панели)
+  if (e.code !== "Tab" || !e.shiftKey || e.ctrlKey || e.altKey || e.metaKey || isTyping(e.target)) return;
+  e.preventDefault();
+  toggleFret();
+});
+applyFret();
 </script>
 </body>
 </html>

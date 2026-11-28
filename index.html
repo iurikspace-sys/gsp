@@ -19,14 +19,15 @@
   label { font-size: 14px; margin-left: 8px; }
   #status { font-size: 12px; color: #888; margin-left: auto; white-space: nowrap; }
   #top select { font-size: 14px; padding: 4px 6px; }
-  #fretBtn, #fpBtn { margin: 0; padding: 4px 14px; background: #fff; border: 1px solid #ddd; border-radius: 6px; }
-  #fretBtn.on, #fpBtn.on { background: #e8f0fe; border-color: #7aa7f7; }
+  #fretBtn { margin: 0; padding: 4px 14px; background: #fff; border: 1px solid #ddd; border-radius: 6px; }
+  #fretBtn.on { background: #e8f0fe; border-color: #7aa7f7; }
   #fpAcc { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
   #fpAcc button { margin: 0; width: 28px; height: 28px; padding: 0; font-size: 12px; border: 1px solid #888; border-radius: 50%; background: #eee; }
   #fpAcc button.l2 { background: #333; color: #fff; } #fpAcc button.l0 { border-style: dashed; opacity: .45; }
   #fpAcc button.cur { outline: 3px solid #f08a24; }   /* оранжевый — только то, что играет сейчас */
   #panel .fpSub button { padding: 5px 12px; } #panel .fpSub button.on { background: #e8f0fe; border-color: #7aa7f7; font-weight: 600; }
-  #fpBpm { width: 72px; font-size: 20px; }
+  #fpBpm { font-size: 44px; font-weight: 600; line-height: 1; width: 100%; border: 0; background: transparent; padding: 0; font-family: inherit; }
+  #fpUnit { font-size: 12px; color: #666; margin-bottom: 4px; }
   #layout { flex: 1; min-height: 0; display: grid; grid-template-columns: 22px auto minmax(0, 1fr) auto 22px; grid-template-rows: minmax(0, 1fr); }
   #stripL { grid-column: 1; } #leftside { grid-column: 2; } #center { grid-column: 3; } #rightside { grid-column: 4; } #stripR { grid-column: 5; }
   .strip { background: #e6e6e6; display: flex; flex-direction: column; align-items: stretch; gap: 2px; padding-top: 4px; }
@@ -93,7 +94,6 @@
   <div id="logo">Seq Trainer</div>
   <div id="tabs"></div>
   <span id="status">загрузка…</span>
-  <button id="fpBtn" title="Свободная игра: метроном без нот">Free play</button>
   <select id="zoom" title="Масштаб нот"><option value="75">75%</option><option value="100">100%</option><option value="125">125%</option><option value="150">150%</option></select>
   <button id="fretBtn" class="on" title="Показать/скрыть гриф (Shift+Tab)">Гриф</button>
 </div>
@@ -112,14 +112,13 @@
   <aside id="rightside" class="side">
     <div class="sideHead" id="rightHead">Metronome</div>
     <div id="panel">
+      <section id="modeSw"><div class="row views"><button data-mode="ex" class="on">Упражнение</button><button data-mode="fp">Free play</button></div></section>
       <div id="paneM">
       <section>
       <h3>Воспроизведение</h3>
       <div class="row tr">
         <button id="play" title="Play" disabled>▶</button><button id="pause" title="Pause" disabled>❚❚</button><button id="stop" title="Stop" disabled>■</button>
       </div>
-      <label style="margin-top:8px"><input type="checkbox" id="loop" checked> Повтор</label>
-      <div class="row reps"><button data-rep="exercise" title="Повторять упражнение целиком">Упражнение</button><button data-rep="bar" title="Повторять такт, где нажали Play">Такт</button><button data-rep="tail" title="Повторять от ноты под курсором до конца упражнения">От ноты</button></div>
     </section>
       <section>
       <h3>Темп</h3>
@@ -136,6 +135,10 @@
       <input type="range" id="metroVol" min="0" max="100" value="80">
     </section>
       <section>
+      <label><input type="checkbox" id="loop" checked> Повтор</label>
+      <div class="row reps"><button data-rep="exercise" title="Повторять упражнение целиком">Упражнение</button><button data-rep="bar" title="Повторять такт, где нажали Play">Такт</button><button data-rep="tail" title="Повторять от ноты под курсором до конца упражнения">От ноты</button></div>
+    </section>
+      <section>
       <label><input type="checkbox" id="countIn"> Счёт перед стартом</label>
     </section>
       <section>
@@ -144,15 +147,16 @@
     </section>
       </div>
       <div id="fpPane" hidden>
-        <section><h3>Free play</h3>
-          <div class="row tr"><button id="fpPlay" title="Старт (Пробел)">▶</button><button id="fpPause" title="Пауза (Пробел)" disabled>❚❚</button><button id="fpStop" title="Стоп (Esc)">■</button></div>
-          <div class="cap" style="margin-top:6px">Shift+Пробел — старт на 50% темпа, до Esc</div>
+        <section><h3>Воспроизведение</h3>
+          <div class="row tr"><button id="fpPlay" title="Старт (Пробел), Shift+Пробел — на 50% темпа до Esc">▶</button><button id="fpPause" title="Пауза (Пробел)" disabled>❚❚</button><button id="fpStop" title="Стоп (Esc)">■</button></div>
         </section>
         <section><h3>Темп</h3>
-          <input type="number" id="fpBpm" min="30" max="300" value="100"> <span class="cap">долей в минуту</span>
+          <input type="number" id="fpBpm" min="30" max="300" value="100">
+          <div id="fpUnit">долей в минуту</div>
           <div class="row"><button data-fd="-5">−5</button><button data-fd="-1">−1</button><button data-fd="1">+1</button><button data-fd="5">+5</button><button id="fpTap" title="Стучи в такт">Tap</button></div>
           <input type="range" id="fpBpmRange" min="30" max="300" value="100">
         </section>
+        <section><label>Метроном</label><div class="cap">Громкость щелчка</div><input type="range" id="fpVol" min="0" max="100" value="80"></section>
         <section><h3>Размер</h3>
           <select id="fpNum"></select> / <select id="fpDen"></select>
           <div class="cap">Доли: клик — сильная, слабая, тишина</div>
@@ -162,7 +166,6 @@
           <div class="row fpSub"><button data-sub="1">1</button><button data-sub="2">2</button><button data-sub="3">3</button><button data-sub="4">4</button></div>
           <div class="cap">щелчков на долю: 2 — восьмые, 3 — триоли, 4 — шестнадцатые</div>
         </section>
-        <section><h3>Громкость</h3><input type="range" id="fpVol" min="0" max="100" value="80"></section>
       </div>
       <div id="paneS" hidden>
       <section>
@@ -999,6 +1002,7 @@ function fpRender() {
 function fpVis() {   // free play занимает место обычной вкладки Metronome
   const m = sides.R.cur === "M";
   $("#fpPane").hidden = !(fpOn && m);
+  $("#modeSw").hidden = !m;
   if (fpOn && m) $("#paneM").hidden = true;
 }
 $("#fpNum").innerHTML = Array.from({ length: 16 }, (_, i) => "<option>" + (i + 1) + "</option>").join("");
@@ -1025,12 +1029,14 @@ $("#fpTap").onclick = () => {   // Tap tempo: среднее по последн
   $("#fpTap").blur();
 };
 // вход и выход только мышью; в free play Play упражнения заблокирован, ноты мышью не выбираются
-$("#fpBtn").onclick = () => {
-  if (!fpOn) { try { api.stop(); } catch (e) { /* плеер ещё не готов */ } fpOn = true; sides.R.cur = "M"; sides.R.open = true; }
+function setFreePlay(on) {
+  if (on === fpOn) return;
+  if (on) { try { api.stop(); } catch (e) { /* плеер ещё не готов */ } fpOn = true; sides.R.cur = "M"; sides.R.open = true; }
   else { fpStop(); fpOn = false; }
-  $("#fpBtn").classList.toggle("on", fpOn); $("#fpBtn").blur();
+  document.querySelectorAll("#modeSw button").forEach(b => b.classList.toggle("on", (b.dataset.mode === "fp") === fpOn));
   showSide("R"); updateTransport(); fpRender();
-};
+}
+document.querySelectorAll("#modeSw button").forEach(b => b.onclick = () => { setFreePlay(b.dataset.mode === "fp"); b.blur(); });
 ["mousedown", "mouseup", "click", "touchstart"].forEach(t => $("#atwrap").addEventListener(t, e => { if (fpOn) e.stopPropagation(); }, true));
 // клавиши в free play перехватываются раньше обычных: Пробел, Shift+Пробел, Esc, «+»/«−»; клавиши упражнений отключены
 window.addEventListener("keydown", e => {
@@ -1040,7 +1046,7 @@ window.addEventListener("keydown", e => {
     e.preventDefault(); e.stopImmediatePropagation();
     if (e.repeat) return;
     if (e.target && (e.target.tagName === "BUTTON" || e.target.tagName === "INPUT")) e.target.blur();
-    if (fp.running) fpPause(); else fpStart(e.shiftKey);
+    if (fp.running) { if (st.spacePause) fpPause(); else fpStop(); } else fpStart(e.shiftKey);
     return;
   }
   if (k === "Escape" && !typing) { e.preventDefault(); e.stopImmediatePropagation(); fpStop(); return; }

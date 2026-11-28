@@ -19,8 +19,14 @@
   label { font-size: 14px; margin-left: 8px; }
   #status { font-size: 12px; color: #888; margin-left: auto; white-space: nowrap; }
   #top select { font-size: 14px; padding: 4px 6px; }
-  #fretBtn { margin: 0; padding: 4px 14px; background: #fff; border: 1px solid #ddd; border-radius: 6px; }
-  #fretBtn.on { background: #e8f0fe; border-color: #7aa7f7; }
+  #fretBtn, #fpBtn { margin: 0; padding: 4px 14px; background: #fff; border: 1px solid #ddd; border-radius: 6px; }
+  #fretBtn.on, #fpBtn.on { background: #e8f0fe; border-color: #7aa7f7; }
+  #fpAcc { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+  #fpAcc button { margin: 0; width: 28px; height: 28px; padding: 0; font-size: 12px; border: 1px solid #888; border-radius: 50%; background: #eee; }
+  #fpAcc button.l2 { background: #333; color: #fff; } #fpAcc button.l0 { border-style: dashed; opacity: .45; }
+  #fpAcc button.cur { outline: 3px solid #f08a24; }   /* оранжевый — только то, что играет сейчас */
+  #panel .fpSub button { padding: 5px 12px; } #panel .fpSub button.on { background: #e8f0fe; border-color: #7aa7f7; font-weight: 600; }
+  #fpBpm { width: 72px; font-size: 20px; }
   #layout { flex: 1; min-height: 0; display: grid; grid-template-columns: 22px auto minmax(0, 1fr) auto 22px; grid-template-rows: minmax(0, 1fr); }
   #stripL { grid-column: 1; } #leftside { grid-column: 2; } #center { grid-column: 3; } #rightside { grid-column: 4; } #stripR { grid-column: 5; }
   .strip { background: #e6e6e6; display: flex; flex-direction: column; align-items: stretch; gap: 2px; padding-top: 4px; }
@@ -87,7 +93,8 @@
   <div id="logo">Seq Trainer</div>
   <div id="tabs"></div>
   <span id="status">загрузка…</span>
-  <select id="zoom" title="Масштаб нот"><option value="50">50%</option><option value="75">75%</option><option value="100">100%</option><option value="125">125%</option><option value="150">150%</option><option value="175">175%</option><option value="200">200%</option></select>
+  <button id="fpBtn" title="Свободная игра: метроном без нот">Free play</button>
+  <select id="zoom" title="Масштаб нот"><option value="75">75%</option><option value="100">100%</option><option value="125">125%</option><option value="150">150%</option></select>
   <button id="fretBtn" class="on" title="Показать/скрыть гриф (Shift+Tab)">Гриф</button>
 </div>
 <div id="layout">
@@ -136,6 +143,27 @@
       <input type="range" id="master" min="0" max="100" value="100">
     </section>
       </div>
+      <div id="fpPane" hidden>
+        <section><h3>Free play</h3>
+          <div class="row tr"><button id="fpPlay" title="Старт (Пробел)">▶</button><button id="fpPause" title="Пауза (Пробел)" disabled>❚❚</button><button id="fpStop" title="Стоп (Esc)">■</button></div>
+          <div class="cap" style="margin-top:6px">Shift+Пробел — старт на 50% темпа, до Esc</div>
+        </section>
+        <section><h3>Темп</h3>
+          <input type="number" id="fpBpm" min="30" max="300" value="100"> <span class="cap">долей в минуту</span>
+          <div class="row"><button data-fd="-5">−5</button><button data-fd="-1">−1</button><button data-fd="1">+1</button><button data-fd="5">+5</button><button id="fpTap" title="Стучи в такт">Tap</button></div>
+          <input type="range" id="fpBpmRange" min="30" max="300" value="100">
+        </section>
+        <section><h3>Размер</h3>
+          <select id="fpNum"></select> / <select id="fpDen"></select>
+          <div class="cap">Доли: клик — сильная, слабая, тишина</div>
+          <div id="fpAcc"></div>
+        </section>
+        <section><h3>Деление доли</h3>
+          <div class="row fpSub"><button data-sub="1">1</button><button data-sub="2">2</button><button data-sub="3">3</button><button data-sub="4">4</button></div>
+          <div class="cap">щелчков на долю: 2 — восьмые, 3 — триоли, 4 — шестнадцатые</div>
+        </section>
+        <section><h3>Громкость</h3><input type="range" id="fpVol" min="0" max="100" value="80"></section>
+      </div>
       <div id="paneS" hidden>
       <section>
         <h3>Пробел</h3>
@@ -166,7 +194,7 @@ const lastBox = {};           // на каждой вкладке: номер п
 const $ = s => document.querySelector(s);
 const status = t => $("#status").textContent = t;
 const NOTATION_SCALE = 0.65;   // масштаб нот и табов при 100%; 1 = крупно
-const ZOOMS = [50, 75, 100, 125, 150, 175, 200];   // варианты масштаба в процентах
+const ZOOMS = [75, 100, 125, 150];   // варианты масштаба в процентах
 const zoomOf = z => ZOOMS.includes(Number(z)) ? Number(z) : 100;
 const CDN = "https://cdn.jsdelivr.net/npm/@coderline/alphatab@1.6.3/dist/";
 
@@ -237,6 +265,7 @@ function showNotes(beats) {
 let exercises = [];   // { label, bar, startTick, endTick }
 let current = 0;
 let ready = false;
+var fpOn = false;   // включён free play: Play упражнения заблокирован
 
 // ---------- панель метронома; значения запоминаются в браузере ----------
 const DEFAULTS = { bpm: 75, metro: false, metroVol: 80, countIn: false, master: 100, view: "both", repeat: true, repMode: "exercise", spacePause: true, zoom: 100, fret: true };
@@ -508,7 +537,7 @@ let playing = false;
 let chapterLoading = false;   // идёт загрузка новой главы: старую играть нельзя
 let broken = false;   // глава не загрузилась: нотацию не показываем, играть нечего
 function updateTransport() {
-  $("#play").disabled = !ready || playing || broken || chapterLoading;
+  $("#play").disabled = !ready || playing || broken || chapterLoading || fpOn;
   $("#pause").disabled = !ready || !playing;
   $("#stop").disabled = !ready;
 }
@@ -873,6 +902,7 @@ function showSide(k) {
   sd.aside.hidden = !sd.open;
   Object.entries(sd.panes).forEach(([key, [sel]]) => { $(sel).hidden = key !== sd.cur; });
   sd.head.textContent = sd.panes[sd.cur][1];
+  try { fpVis(); } catch (e) { /* free play ещё не загружен */ }
   sd.strip.querySelectorAll("button").forEach(b => b.classList.toggle("on", sd.open && b.dataset.pane === sd.cur));
   requestAnimationFrame(() => window.dispatchEvent(new Event("resize")));   // партитура подстраивается под новую ширину
 }
@@ -908,6 +938,118 @@ document.addEventListener("keydown", e => {   // Shift+Tab — гриф (про�
   toggleFret();
 });
 applyFret();
+
+// ---------- Free play: свободный метроном на Web Audio (правая панель Metronome) ----------
+// щелчки ставятся в расписание звукового таймера заранее, поэтому темп ровный и не зависит от таймеров страницы
+const fpd = Object.assign({ bpm: 100, num: 4, den: 4, sub: 1, vol: 80 }, st.fp || {});
+const fp = { bpm: clamp(fpd.bpm, 30, 300, 100), num: clamp(fpd.num, 1, 16, 4), den: [2, 4, 8, 16].includes(Number(fpd.den)) ? Number(fpd.den) : 4,
+  sub: clamp(fpd.sub, 1, 4, 1), vol: clamp(fpd.vol, 0, 100, 80), acc: Array.isArray(fpd.acc) ? fpd.acc.map(a => [0, 1, 2].includes(a) ? a : 1) : [],
+  half: false, running: false, idx: 0, next: 0, queue: [], cur: -1 };
+while (fp.acc.length < fp.num) fp.acc.push(fp.acc.length === 0 ? 2 : 1);   // 2 — сильная, 1 — слабая, 0 — тишина
+fp.acc.length = fp.num;
+let fpCtx = null, fpTimer = 0, fpTaps = [];
+function fpSave() { st.fp = { bpm: fp.bpm, num: fp.num, den: fp.den, sub: fp.sub, vol: fp.vol, acc: fp.acc }; saveSettings(); }
+function fpClick(t, kind) {   // kind: 2 сильная, 1 слабая, 0 деление доли
+  const o = fpCtx.createOscillator(), g = fpCtx.createGain();
+  o.type = "square"; o.frequency.value = kind === 2 ? 1600 : kind === 1 ? 1100 : 800;
+  const v = fp.vol / 100 * (kind === 2 ? 0.5 : kind === 1 ? 0.35 : 0.18);
+  g.gain.setValueAtTime(Math.max(v, 0.0001), t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.04);
+  o.connect(g); g.connect(fpCtx.destination); o.start(t); o.stop(t + 0.05);
+}
+function fpTick() {
+  const spb = 60 / (fp.bpm * (fp.half ? 0.5 : 1));   // темп считается в долях знаменателя размера
+  const limit = fpCtx.currentTime + (document.hidden ? 1.5 : 0.15);   // в фоновой вкладке таймеры замедляются: планируем дальше вперёд
+  while (fp.next < limit) {
+    const a = fp.acc[fp.idx];
+    if (a) for (let k = 0; k < fp.sub; k++) fpClick(fp.next + k * spb / fp.sub, k === 0 ? a : 0);
+    fp.queue.push({ t: fp.next, i: fp.idx });
+    fp.next += spb; fp.idx = (fp.idx + 1) % fp.num;
+  }
+}
+function fpFrame() {   // подсветка текущей доли синхронно со звуком
+  if (!fp.running) return;
+  let c = fp.cur;
+  while (fp.queue.length && fp.queue[0].t <= fpCtx.currentTime) c = fp.queue.shift().i;
+  if (c !== fp.cur) { fp.cur = c; Array.from($("#fpAcc").children).forEach((b, i) => b.classList.toggle("cur", i === fp.cur)); }
+  requestAnimationFrame(fpFrame);
+}
+function fpStart(half) {
+  if (!fpCtx) fpCtx = new (window.AudioContext || window.webkitAudioContext)();
+  fpCtx.resume();
+  if (half) fp.half = true;
+  fp.next = fpCtx.currentTime + 0.08; fp.queue = []; fp.running = true;
+  clearInterval(fpTimer); fpTimer = setInterval(fpTick, 25); fpTick();
+  requestAnimationFrame(fpFrame); fpRender();
+}
+function fpPause() { clearInterval(fpTimer); fp.running = false; fp.queue = []; fpRender(); }
+function fpStop() { fpPause(); fp.idx = 0; fp.half = false; fp.cur = -1; fpRender(); }
+function fpSetBpm(v) { fp.bpm = clamp(v, 30, 300, fp.bpm); fpSave(); fpRender(); }
+function fpRender() {
+  $("#fpBpm").value = fp.bpm; $("#fpBpmRange").value = fp.bpm; $("#fpVol").value = fp.vol;
+  $("#fpNum").value = fp.num; $("#fpDen").value = fp.den;
+  document.querySelectorAll("#fpPane button[data-sub]").forEach(b => b.classList.toggle("on", Number(b.dataset.sub) === fp.sub));
+  const box = $("#fpAcc");
+  if (box.children.length !== fp.num) {
+    box.textContent = "";
+    fp.acc.forEach((a, i) => { const b = document.createElement("button"); b.textContent = i + 1; b.onclick = () => { fp.acc[i] = (fp.acc[i] + 2) % 3; fpSave(); fpRender(); b.blur(); }; box.appendChild(b); });
+  }
+  Array.from(box.children).forEach((b, i) => { b.className = "l" + fp.acc[i] + (i === fp.cur ? " cur" : ""); });
+  $("#fpPlay").disabled = fp.running; $("#fpPause").disabled = !fp.running;
+}
+function fpVis() {   // free play занимает место обычной вкладки Metronome
+  const m = sides.R.cur === "M";
+  $("#fpPane").hidden = !(fpOn && m);
+  if (fpOn && m) $("#paneM").hidden = true;
+}
+$("#fpNum").innerHTML = Array.from({ length: 16 }, (_, i) => "<option>" + (i + 1) + "</option>").join("");
+$("#fpDen").innerHTML = [2, 4, 8, 16].map(d => "<option>" + d + "</option>").join("");
+$("#fpPlay").onclick = () => { fpStart(false); $("#fpPlay").blur(); };
+$("#fpPause").onclick = () => { fpPause(); $("#fpPause").blur(); };
+$("#fpStop").onclick = () => { fpStop(); $("#fpStop").blur(); };
+$("#fpBpm").onchange = e => fpSetBpm(e.target.value);
+$("#fpBpmRange").oninput = e => fpSetBpm(e.target.value);
+$("#fpVol").oninput = e => { fp.vol = clamp(e.target.value, 0, 100, fp.vol); fpSave(); };
+document.querySelectorAll("#fpPane button[data-fd]").forEach(b => b.onclick = () => { fpSetBpm(fp.bpm + Number(b.dataset.fd)); b.blur(); });
+document.querySelectorAll("#fpPane button[data-sub]").forEach(b => b.onclick = () => { fp.sub = Number(b.dataset.sub); fpSave(); fpRender(); b.blur(); });
+$("#fpNum").onchange = e => {
+  fp.num = clamp(e.target.value, 1, 16, 4);
+  while (fp.acc.length < fp.num) fp.acc.push(1);
+  fp.acc.length = fp.num; fp.idx = 0; fp.cur = -1; fpSave(); fpRender(); e.target.blur();
+};
+$("#fpDen").onchange = e => { fp.den = Number(e.target.value); fpSave(); e.target.blur(); };
+$("#fpTap").onclick = () => {   // Tap tempo: среднее по последним ударам, пауза больше 2 секунд начинает заново
+  const n = performance.now();
+  if (fpTaps.length && n - fpTaps[fpTaps.length - 1] > 2000) fpTaps = [];
+  fpTaps = fpTaps.concat(n).slice(-5);
+  if (fpTaps.length >= 2) fpSetBpm(60000 / ((fpTaps[fpTaps.length - 1] - fpTaps[0]) / (fpTaps.length - 1)));
+  $("#fpTap").blur();
+};
+// вход и выход только мышью; в free play Play упражнения заблокирован, ноты мышью не выбираются
+$("#fpBtn").onclick = () => {
+  if (!fpOn) { try { api.stop(); } catch (e) { /* плеер ещё не готов */ } fpOn = true; sides.R.cur = "M"; sides.R.open = true; }
+  else { fpStop(); fpOn = false; }
+  $("#fpBtn").classList.toggle("on", fpOn); $("#fpBtn").blur();
+  showSide("R"); updateTransport(); fpRender();
+};
+["mousedown", "mouseup", "click", "touchstart"].forEach(t => $("#atwrap").addEventListener(t, e => { if (fpOn) e.stopPropagation(); }, true));
+// клавиши в free play перехватываются раньше обычных: Пробел, Shift+Пробел, Esc, «+»/«−»; клавиши упражнений отключены
+window.addEventListener("keydown", e => {
+  if (!fpOn || e.ctrlKey || e.altKey || e.metaKey) return;
+  const k = e.code, typing = isTyping(e.target);
+  if (k === "Space" && !typing) {
+    e.preventDefault(); e.stopImmediatePropagation();
+    if (e.repeat) return;
+    if (e.target && (e.target.tagName === "BUTTON" || e.target.tagName === "INPUT")) e.target.blur();
+    if (fp.running) fpPause(); else fpStart(e.shiftKey);
+    return;
+  }
+  if (k === "Escape" && !typing) { e.preventDefault(); e.stopImmediatePropagation(); fpStop(); return; }
+  if (typing) return;
+  const dir = (k === "Minus" || k === "NumpadSubtract") ? -1 : (k === "Equal" || k === "NumpadAdd") ? 1 : 0;
+  if (dir) { e.preventDefault(); e.stopImmediatePropagation(); fpSetBpm(fp.bpm + dir * (e.shiftKey ? 5 : 1)); return; }
+  if (/^(Arrow|Home|End|KeyR)/.test(k)) { e.preventDefault(); e.stopImmediatePropagation(); }
+}, true);
+fpRender();
 </script>
 </body>
 </html>

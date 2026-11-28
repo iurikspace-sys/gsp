@@ -67,7 +67,7 @@
   #bpmUnit { font-size: 12px; color: #666; margin-bottom: 4px; }
   /* курсор alphaTab: зелёный */
   /* курсор alphaTab: играющий такт и выделение светло-бежевые; курсор-линия зелёная */
-  .at-cursor-bar { background: rgba(245, 222, 179, .55); }
+  .at-cursor-bar { background: transparent; }   /* такт под курсором не подкрашиваем: цвет только у выделения мышью */
   .at-cursor-beat { background: #2ea043; width: 3px; clip-path: inset(0 1px 0 0); }   /* видимая ширина 2px: правый пиксель обрезан, размеры и движение курсора не трогаем */
   /* слои: заливка такта и выделения под нотами, линия курсора поверх нот */
   #at .at-cursors { z-index: auto !important; }
@@ -76,7 +76,6 @@
   #at .at-cursor-beat { z-index: 2 !important; }
   .at-selection div { background: rgba(245, 222, 179, .55); }
   #atwrap.exrange .at-selection div { background: transparent; }   /* диапазон упражнения не показываем как выделение */
-  #atwrap.usersel .at-cursor-bar { background: transparent; }       /* при выделении мышью подсветка такта не накладывается */
   .at-highlight * { fill: #2ea043; stroke: #2ea043; }
   #fretboard { flex: none; margin-top: 2px; }
   /* ряд боксов: мини-схемы (струны и точки), выбранный подсвечен */
@@ -112,7 +111,7 @@
   <aside id="rightside" class="side">
     <div class="sideHead" id="rightHead">Metronome</div>
     <div id="panel">
-      <section id="modeSw"><div class="row views"><button data-mode="ex" class="on">Упражнение</button><button data-mode="fp">Free play</button></div></section>
+      <section id="modeSw"><div class="row views"><button id="fpMode" title="Свободный метроном без нот">Free play</button></div></section>
       <div id="paneM">
       <section>
       <h3>Воспроизведение</h3>
@@ -1033,10 +1032,12 @@ function setFreePlay(on) {
   if (on === fpOn) return;
   if (on) { try { api.stop(); } catch (e) { /* плеер ещё не готов */ } fpOn = true; sides.R.cur = "M"; sides.R.open = true; }
   else { fpStop(); fpOn = false; }
-  document.querySelectorAll("#modeSw button").forEach(b => b.classList.toggle("on", (b.dataset.mode === "fp") === fpOn));
+  $("#fpMode").classList.toggle("on", fpOn);
   showSide("R"); updateTransport(); fpRender();
 }
-document.querySelectorAll("#modeSw button").forEach(b => b.onclick = () => { setFreePlay(b.dataset.mode === "fp"); b.blur(); });
+$("#fpMode").onclick = () => { setFreePlay(!fpOn); $("#fpMode").blur(); };
+$("#atwrap").addEventListener("mousedown", e => { if (!fpOn && e.button === 0) $("#atwrap").classList.remove("exrange"); }, true);
+document.addEventListener("mouseup", () => setTimeout(() => markRange(userSelActive()), 80));
 ["mousedown", "mouseup", "click", "touchstart"].forEach(t => $("#atwrap").addEventListener(t, e => { if (fpOn) e.stopPropagation(); }, true));
 // клавиши в free play перехватываются раньше обычных: Пробел, Shift+Пробел, Esc, «+»/«−»; клавиши упражнений отключены
 window.addEventListener("keydown", e => {
